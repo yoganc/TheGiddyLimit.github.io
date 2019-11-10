@@ -7378,15 +7378,7 @@ if (!IS_VTT && typeof window !== "undefined") {
 	*/
 
 	// Hack to lock the ad space at original size--prevents the screen from shifting around once loaded
-	setTimeout(() => {
-		const $wrp = $(`.cancer__wrp-leaderboard`);
-		// const w = $wrp.outerWidth();
-		const h = $wrp.outerHeight();
-		$wrp.css({
-			// width: w,
-			height: h
-		});
-	}, 5000);
+	setTimeout(() => {}, 5000);
 }
 
 _Donate = {
