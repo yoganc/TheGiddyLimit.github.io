@@ -64,29 +64,6 @@ function dataRecurse (file, obj, primitiveHandlers, lastType, lastKey) {
 	}
 }
 
-const replacements = {
-	"—": "\\u2014",
-	"–": "\\u2013",
-	"−": "\\u2212",
-	"’": "'",
-	"“": '\\"',
-	"”": '\\"',
-	"…": "...",
-	" ": " ", // non-breaking space
-	"ﬁ": "fi"
-};
-
-const replacementRegex = new RegExp(Object.keys(replacements).join("|"), 'g');
-
-function getCleanJson (data, minify = false) {
-	data = minify ? JSON.stringify(data) : JSON.stringify(data, null, "\t") + "\n";
-	data = data.replace(replacementRegex, (match) => replacements[match]);
-	return data
-		.replace(/\u00AD/g, "") // soft hyphens
-		.replace(/\s*(\\u2014|\\u2013)\s*/g, "$1")
-		.replace(/\s*(\.\.\.)/g, "$1");
-}
-
 function readJson (path) {
 	try {
 		return JSON.parse(fs.readFileSync(path, "utf8"));
@@ -101,25 +78,28 @@ function isDirectory (path) {
 }
 
 const FILE_EXTENSION_WHITELIST = [
-	".json"
+	".json",
 ];
 
 const FILE_PREFIX_BLACKLIST = [
 	"bookref-",
-	"roll20-module-",
-	"gendata-"
+	"roll20-",
+	"foundry-",
+	"gendata-",
 ];
 
 /**
  * Recursively list all files in a directory.
  *
- * @param opts Options object.
- * @param opts.blacklistFilePrefixes Blacklisted filename prefixes (case sensitive).
- * @param opts.whitelistFileExts Whitelisted filename extensions (case sensitive).
- * @param opts.dir Directory to list.
- * @param opts.whitelistDirs Directory whitelist.
+ * @param [opts] Options object.
+ * @param [opts.blacklistFilePrefixes] Blacklisted filename prefixes (case sensitive).
+ * @param [opts.whitelistFileExts] Whitelisted filename extensions (case sensitive).
+ * @param [opts.dir] Directory to list.
+ * @param [opts.whitelistDirs] Directory whitelist.
  */
 function listFiles (opts) {
+	opts = opts || {};
+	opts.dir = opts.dir || "./data";
 	opts.blacklistFilePrefixes = opts.blacklistFilePrefixes || FILE_PREFIX_BLACKLIST;
 	opts.whitelistFileExts = opts.whitelistFileExts || FILE_EXTENSION_WHITELIST;
 	opts.whitelistDirs = opts.whitelistDirs || null;
@@ -139,34 +119,27 @@ function listFiles (opts) {
 	}, []);
 }
 
-const TAG_TO_DEFAULT_SOURCE = {
-	"spell": "phb",
-	"item": "dmg",
-	"class": "phb",
-	"creature": "mm",
-	"condition": "phb",
-	"disease": "dmg",
-	"background": "phb",
-	"race": "phb",
-	"optfeature": "phb",
-	"reward": "dmg",
-	"feat": "phb",
-	"psionic": "UATheMysticClass",
-	"object": "dmg",
-	"cult": "mtf",
-	"boon": "mtf",
-	"trap": "dmg",
-	"hazard": "dmg",
-	"deity": "phb",
-	"variantrule": "dmg",
-	"vehicle": "gos"
-};
+class PatchLoadJson {
+	static patchLoadJson () {
+		PatchLoadJson._CACHED = PatchLoadJson._CACHED || DataUtil.loadJSON;
+		DataUtil.loadJSON = async (url) => {
+			const data = readJson(url);
+			await DataUtil.pDoMetaMerge(url, data);
+			return data;
+		}
+	}
+
+	static unpatchLoadJson () {
+		if (PatchLoadJson._CACHED) DataUtil.loadJSON = PatchLoadJson._CACHED;
+	}
+}
+PatchLoadJson._CACHED = null;
 
 module.exports = {
 	dataRecurse,
-	getCleanStringJson: getCleanJson,
 	readJson,
 	listFiles,
 	FILE_PREFIX_BLACKLIST,
-	TAG_TO_DEFAULT_SOURCE
+	patchLoadJson: PatchLoadJson.patchLoadJson,
+	unpatchLoadJson: PatchLoadJson.unpatchLoadJson,
 };

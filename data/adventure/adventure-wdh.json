@@ -2617,7 +2617,7 @@
 							"id": "09d",
 							"entries": [
 								"During daylight hours, smoke and steam billow from the many windows around this indoor forge where metal weapons, armor, and tools are made. The forge is owned and operated by a married couple: a fire genasi named {@creature Embric|wdh} and a water genasi named {@creature Avi|wdh}. Both are members of the Most Careful Order of Skilled Smiths and Metalforgers. As an armorer, Avi also belongs to the Splendid Order of Armorers, Locksmiths, and Finesmiths.",
-								"Embric tends the forge and is an expert weaponsmith. He claims descent from the efreet of Calimshan and is {@condition prone} to extreme mood swings. He has the statistics of a {@creature bandit captain}, with these changes:",
+								"Embric tends the forge and is an expert weaponsmith. He claims descent from the efreet of Calimshan and is prone to extreme mood swings. He has the statistics of a {@creature bandit captain}, with these changes:",
 								{
 									"type": "list",
 									"items": [
@@ -8338,8 +8338,10 @@
 								{
 									"type": "list",
 									"items": [
-										"Emmek Frewn (see \"Business Rival: Emmek Frewn\") needs 1,500 gp to pay off a loan with interest. If he doesn't repay the coin in a tenday, {@creature Istrid Horn|WDH} (see {@adventure appendix B|WDH|12}) sends Zhentarim thugs to threaten, if not hurt, him. Emmek comes to the characters with hat in hand, preying on their generosity while denying any wrongdoing on his part. {@creature Davil Starsong|WDH} (see {@adventure appendix B|WDH|12}) asks the characters for a donation of 5,000 gp to keep his branch of the Zhentarim afloat in Waterdeep. Recent altercations and legal issues have drained the Doom Raiders' coffers. If the characters refuse, the Doom Raiders are driven out of the city, yielding control of the Zhentarim in Waterdeep to Manshoon (if he's alive).",
-										"Floon Blagmaar (see {@adventure appendix B|WDH|12}) asks the characters to give him 500 gp to cover a hefty gambling debt. If the characters refuse to give Floon the gold, he vanishes without a trace {@dice 1d10} days later. {@creature volothamp \"volo\" geddarm|ToA|Volothamp Geddarm} (see {@adventure appendix B|WDH|12}) asks the characters for 5,000 gp to fund an expedition that he hopes will inspire a future book, for which he'll give them special mention in said masterwork. If the characters seem hesitant, Volo reminds them that were it not for his starting them off on this adventure, they wouldn't have the gold in the first place.",
+										"Emmek Frewn (see \"Business Rival: Emmek Frewn\") needs 1,500 gp to pay off a loan with interest. If he doesn't repay the coin in a tenday, {@creature Istrid Horn|WDH} (see {@adventure appendix B|WDH|12}) sends Zhentarim thugs to threaten, if not hurt, him. Emmek comes to the characters with hat in hand, preying on their generosity while denying any wrongdoing on his part.",
+										"{@creature Davil Starsong|WDH} (see {@adventure appendix B|WDH|12}) asks the characters for a donation of 5,000 gp to keep his branch of the Zhentarim afloat in Waterdeep. Recent altercations and legal issues have drained the Doom Raiders' coffers. If the characters refuse, the Doom Raiders are driven out of the city, yielding control of the Zhentarim in Waterdeep to Manshoon (if he's alive).",
+										"Floon Blagmaar (see {@adventure appendix B|WDH|12}) asks the characters to give him 500 gp to cover a hefty gambling debt. If the characters refuse to give Floon the gold, he vanishes without a trace {@dice 1d10} days later.",
+										"{@creature volothamp \"volo\" geddarm|ToA|Volothamp Geddarm} (see {@adventure appendix B|WDH|12}) asks the characters for 5,000 gp to fund an expedition that he hopes will inspire a future book, for which he'll give them special mention in said masterwork. If the characters seem hesitant, Volo reminds them that were it not for his starting them off on this adventure, they wouldn't have the gold in the first place.",
 										"Jelenn Urmbrusk, a Masked Lord in debt to Manshoon, requests an interest-free loan of 10,000 gp, which she vows to repay within a year. In exchange, she promises to use her \"considerable influence with the Lords of Waterdeep\" to help them in the future. If the characters oblige, she makes good on her promise to pay them back and grants them a special favor (see \"Marks of Prestige\" in chapter 7 of the {@book Dungeon Master's Guide|dmg}). If they refuse, they will have made an enemy of the secret Masked Lord.",
 										"Temples, charities, guilds, and down-on-their-luck strangers come knocking from time to time. What they ask for isn't much-a few gold here and there-but it all adds up."
 									]
@@ -12409,7 +12411,7 @@
 							"name": "Drow Crew",
 							"id": "3a4",
 							"entries": [
-								"The magic that conceals the true appearance of drow aboard Jarlaxle's ships doesn't extend to the {@i Scarlet Marpenoth} . Characters who encounter drow while sneaking around the submarine are questioned. If the drow don't get the answers they want, they attack. Any nearby drow who hear a fight break out will investigate and team up to repel boarders."
+								"The magic that conceals the true appearance of drow aboard Jarlaxle's ships doesn't extend to the {@i Scarlet Marpenoth}. Characters who encounter drow while sneaking around the submarine are questioned. If the drow don't get the answers they want, they attack. Any nearby drow who hear a fight break out will investigate and team up to repel boarders."
 							]
 						},
 						{
@@ -12417,7 +12419,7 @@
 							"name": "Gnome Engineers",
 							"id": "3a5",
 							"entries": [
-								"Rock gnome {@creature engineer|wdh|engineers} maintain and operate the {@i Scarlet Marpenoth} . These gnomes are {@creature apprentice wizard|VGM|apprentice wizards} (see {@adventure appendix B|WDH|12}), with these changes:",
+								"Rock gnome {@creature engineer|wdh|engineers} maintain and operate the {@i Scarlet Marpenoth}. These gnomes are {@creature apprentice wizard|VGM|apprentice wizards} (see {@adventure appendix B|WDH|12}), with these changes:",
 								{
 									"type": "list",
 									"items": [
@@ -13729,7 +13731,7 @@
 											"name": "Treasure Chests",
 											"id": "40e",
 											"entries": [
-												"The padlocks on the chests are illusory but feel real to the touch. A {@spell detect magic} spell or similar magic reveals an aura of illusion magic around each one. Attempts to pick or break the locks fail, but a {@spell knock} spell or similar magic causes a lock to open. {@i Chest 1} has the image of an anvil carved into its lid. It contains a set of smith's tools (worth 20 gp). {@i Chest 2 } has iron bands and contains a set of painter's supplies (worth 10 gp), as well as three small pots of colored paint (blue, red, and yellow). {@i Chest 3} has tiny clawed feet and contains six blank spellbooks with leather covers (worth 50 gp each). {@i Chest 4} has a flat lid with a city scene painted on it. It contains a scholar's pack (worth 40 gp) and a book of Dwarvish phrases. A character who doesn't speak Dwarvish can use the book to communicate on a rudimentary level with friendly dwarves. {@i Chest 5} is inlaid with silver and topped with a silver statuette of a rearing hippogriff (worth 25 gp). Inside is a wooden rack that holds eight glass vials\u2014six containing {@item potion of healing||potions of healing} and two containing individual doses of {@item essence of ether (inhaled)||essence of ether} (see \"Poisons\" in chapter 8 of the {@book Dungeon Master's Guide|dmg}). The poison can be identified with a successful DC 13 Intelligence (Nature) check."
+												"The padlocks on the chests are illusory but feel real to the touch. A {@spell detect magic} spell or similar magic reveals an aura of illusion magic around each one. Attempts to pick or break the locks fail, but a {@spell knock} spell or similar magic causes a lock to open. {@i Chest 1} has the image of an anvil carved into its lid. It contains a set of smith's tools (worth 20 gp). {@i Chest 2 } has iron bands and contains a set of painter's supplies (worth 10 gp), as well as three small pots of colored paint (blue, red, and yellow). {@i Chest 3} has tiny clawed feet and contains six blank spellbooks with leather covers (worth 50 gp each). {@i Chest 4} has a flat lid with a city scene painted on it. It contains a scholar's pack (worth 40 gp) and a book of Dwarvish phrases. A character who doesn't speak Dwarvish can use the book to communicate on a rudimentary level with friendly dwarves. {@i Chest 5} is inlaid with silver and topped with a silver statuette of a rearing hippogriff (worth 25 gp). Inside is a wooden rack that holds eight glass vials\u2014six containing {@item potion of healing||potions of healing} and two containing individual doses of {@item essence of ether} (see \"Poisons\" in chapter 8 of the {@book Dungeon Master's Guide|dmg}). The poison can be identified with a successful DC 13 Intelligence (Nature) check."
 											]
 										}
 									]

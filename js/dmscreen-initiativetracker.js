@@ -20,11 +20,12 @@ class InitiativeTracker {
 			importIsAddPlayers: _propDefaultTrue(state.p),
 			importIsAppend: _propDefaultFalse(state.a),
 			statsAddColumns: _propDefaultFalse(state.k),
-			playerInitShowExactHp: _propDefaultFalse(state.piH),
+			playerInitShowExactPlayerHp: _propDefaultFalse(state.piHp),
+			playerInitShowExactMonsterHp: _propDefaultFalse(state.piHm),
 			playerInitHideNewMonster: _propDefaultTrue(state.piV),
 			playerInitShowOrdinals: _propDefaultFalse(state.piO),
 			playerInitShortTokens: _propDefaultTrue(state.piS),
-			statsCols: state.c || []
+			statsCols: state.c || [],
 		};
 
 		const $wrpTracker = $(`<div class="dm-init dm__panel-bg dm__data-anchor"/>`);
@@ -37,25 +38,19 @@ class InitiativeTracker {
 			// 	$wrpTracker.find(`.dm-init-row-mid`).hide();
 			// }
 		};
-		board.reactor.on("panelResize", handleResize);
-		$wrpTracker.on("destroyed", () => board.reactor.off("panelResize", handleResize));
+		const evtId = CryptUtil.uid();
+		board.$creen.on(`panelResize.${evtId}`, handleResize);
+		$wrpTracker.on("destroyed", () => board.$creen.off(`panelResize.${evtId}`));
 
+		let srvPeer = null;
 		const p2pMeta = {rows: [], serverInfo: null};
 		const _sendStateToClients = () => {
-			if (p2pMeta.serverInfo === null) return;
+			if (srvPeer) {
+				if (!srvPeer.hasConnections()) return;
 
-			p2pMeta.rows = p2pMeta.rows.filter(r => !r.isDeleted);
-			p2pMeta.serverInfo = p2pMeta.serverInfo.filter(r => {
-				if (r.isDeleted) {
-					r.server.close();
-					return false;
-				} else return true;
-			});
-
-			const toSend = getPlayerFriendlyState();
-			try {
-				p2pMeta.serverInfo.filter(info => info.server.isActive).forEach(info => info.server.sendMessage(toSend));
-			} catch (e) { setTimeout(() => { throw e; }) }
+				const toSend = getPlayerFriendlyState();
+				srvPeer.sendMessage(toSend);
+			}
 		};
 		const sendStateToClientsDebounced = MiscUtil.debounce(_sendStateToClients, 100); // long delay to avoid network spam
 
@@ -75,41 +70,48 @@ class InitiativeTracker {
 		};
 
 		// initialise "upload" context menu
-		const contextId = ContextUtil.getNextGenericMenuId();
-		ContextUtil.doInitContextMenu(contextId, async (evt, ele, $invokedOn, $selectedMenu) => {
-			switch (Number($selectedMenu.data("ctx-id"))) {
-				case 0: {
+		const menu = ContextUtil.getMenu([
+			new ContextUtil.Action(
+				"From Current Bestiary Encounter",
+				async () => {
 					const savedState = await EncounterUtil.pGetInitialState();
 					if (savedState) await pConvertAndLoadBestiaryList(savedState.data);
 					else {
 						JqueryUtil.doToast({
 							content: `No saved encounter! Please first go to the Bestiary and create one.`,
-							type: "warning"
+							type: "warning",
 						});
 					}
-					break;
-				}
-				case 1: {
+				},
+			),
+			new ContextUtil.Action(
+				"From Saved Bestiary Encounter",
+				async () => {
 					const allSaves = Object.values((await EncounterUtil.pGetSavedState()).savedEncounters || {});
 					if (!allSaves.length) return JqueryUtil.doToast({type: "warning", content: "No saved encounters were found! Go to the Bestiary and create some first."});
 					const selected = await InputUiUtil.pGetUserEnum({
 						values: allSaves.map(it => it.name),
 						placeholder: "Select a save",
-						title: "Select Saved Encounter"
+						title: "Select Saved Encounter",
 					});
 					if (selected != null) await pConvertAndLoadBestiaryList(allSaves[selected].data);
-					break;
-				}
-				case 2: {
+				},
+			),
+			new ContextUtil.Action(
+				"From Bestiary Encounter File",
+				async () => {
 					const json = await DataUtil.pUserUpload();
 					if (json) await pConvertAndLoadBestiaryList(json);
-					break;
-				}
-				case 3:
+				},
+			),
+			null,
+			new ContextUtil.Action(
+				"Import Settings",
+				() => {
 					makeImportSettingsModal();
-					break;
-			}
-		}, ["From Current Bestiary Encounter", "From Saved Bestiary Encounter", "From Bestiary Encounter File", null, "Import Settings"]);
+				},
+			),
+		])
 
 		const $wrpTop = $(`<div class="dm-init-wrp-header-outer"/>`).appendTo($wrpTracker);
 		const $wrpHeader = $(`
@@ -157,345 +159,157 @@ class InitiativeTracker {
 				doSort(NUM);
 			});
 
+		/**
+		 * @param [opts]
+		 * @param [opts.$btnStartServer]
+		 * @param [opts.$btnGetToken]
+		 * @param [opts.fnDispServerStoppedState]
+		 * @param [opts.fnDispServerRunningState]
+		 */
+		const startServer = async (opts) => {
+			opts = opts || {};
+
+			if (srvPeer) {
+				await srvPeer.pInit();
+				return true;
+			}
+
+			try {
+				if (opts.$btnStartServer) opts.$btnStartServer.prop("disabled", true);
+				srvPeer = new PeerVeServer();
+				await srvPeer.pInit();
+				if (opts.$btnGetToken) opts.$btnGetToken.prop("disabled", false);
+
+				srvPeer.on("connection", connection => {
+					const pConnected = new Promise(resolve => {
+						connection.on("open", () => {
+							resolve(true);
+							doUpdateExternalStates();
+						});
+					});
+					const pTimeout = MiscUtil.pDelay(5 * 1000, false);
+					Promise.race([pConnected, pTimeout])
+						.then(didConnect => {
+							if (!didConnect) {
+								JqueryUtil.doToast({content: `Connecting to "${connection.label.escapeQuotes()}" has taken more than 5 seconds! The connection may need to be re-attempted.`, type: "warning"})
+							}
+						});
+				});
+
+				$(window).on("beforeunload", evt => {
+					const message = `The connection will be closed`;
+					(evt || window.event).message = message;
+					return message;
+				});
+
+				if (opts.fnDispServerRunningState) opts.fnDispServerRunningState();
+
+				return true;
+			} catch (e) {
+				if (opts.fnDispServerStoppedState) opts.fnDispServerStoppedState();
+				if (opts.$btnStartServer) opts.$btnStartServer.prop("disabled", false);
+				srvPeer = null;
+				JqueryUtil.doToast({content: `Failed to start server! ${VeCt.STR_SEE_CONSOLE}`, type: "danger"});
+				setTimeout(() => { throw e; });
+			}
+
+			return false;
+		};
+
 		const $wrpUtils = $(`<div class="flex"/>`).appendTo($wrpControls);
 		$(`<button class="btn btn-primary btn-xs mr-2" title="Player Window"><span class="glyphicon glyphicon-user"/></button>`)
 			.appendTo($wrpUtils)
 			.click(() => {
 				const {$modalInner} = UiUtil.getShowModal({
 					title: "Configure Player View",
-					isLarge: true,
-					fullHeight: true,
+					isUncappedHeight: true,
+					isHeight100: true,
 					cbClose: () => {
 						if (p2pMeta.rows.length) p2pMeta.rows.forEach(row => row.$row.detach());
-					}
+						if (srvPeer) srvPeer.offTemp("connection")
+					},
 				});
 
 				const $wrpHelp = UiUtil.$getAddModalRow($modalInner, "div");
-				const $btnAltGenAll = $(`<button class="btn btn-primary btn-text-insert">Generate All</button>`).click(() => $btnGenServerTokens.click());
-				const $btnAltCopyAll = $(`<button class="btn btn-primary btn-text-insert">Copy Server Tokens</button>`).click(() => $btnCopyServers.click());
+
+				const fnDispServerStoppedState = () => {
+					$btnStartServer.html(`<span class="glyphicon glyphicon-play"/> Start Server`).prop("disabled", false);
+					$btnGetToken.prop("disabled", true);
+				};
+
+				const fnDispServerRunningState = () => {
+					$btnStartServer.html(`<span class="glyphicon glyphicon-play"/> Server Running`).prop("disabled", true);
+					$btnGetToken.prop("disabled", false);
+				};
+
+				const $btnStartServer = $(`<button class="btn btn-default mr-2"></button>`)
+					.click(async () => {
+						const isRunning = await startServer({$btnStartServer, $btnGetToken, fnDispServerStoppedState, fnDispServerRunningState});
+						if (isRunning) {
+							srvPeer.onTemp("connection", showConnected);
+							showConnected();
+						}
+					});
+
+				const $btnGetToken = $(`<button class="btn btn-default" disabled><span class="glyphicon glyphicon-copy"/> Copy Token</button>`).appendTo($wrpHelp)
+					.click(() => {
+						MiscUtil.pCopyTextToClipboard(srvPeer.token);
+						JqueryUtil.showCopiedEffect($btnGetToken);
+					});
+
+				if (srvPeer) fnDispServerRunningState();
+				else fnDispServerStoppedState();
+
 				$$`<div class="row w-100">
 					<div class="col-12">
 						<p>
-						The Player View is part of a peer-to-peer (i.e., serverless) system to allow players to connect to a DM's initiative tracker. Players should use the <a href="inittrackerplayerview.html">Initiative Tracker Player View</a> page to connect to the DM's instance. As a DM, the usage is as follows:
+						The Player View is part of a peer-to-peer system to allow players to connect to a DM's initiative tracker. Players should use the <a href="inittrackerplayerview.html">Initiative Tracker Player View</a> page to connect to the DM's instance. As a DM, the usage is as follows:
 						<ol>
-								<li>Add the required number of players, and input (preferably unique) player names.</li>
-								<li>Click "${$btnAltGenAll}," which will generate a "server token" per player. You can click "${$btnAltCopyAll}" to copy them all as a single block of text, or click on the "Server Token" values to copy them individually. Distribute these tokens to your players (via a messaging service of your choice; we recommend <a href="https://discordapp.com/">Discord</a>). Each player should paste their token into the <a href="inittrackerplayerview.html">Initiative Tracker Player View</a>, following the instructions provided therein.</li>
-								<li>
-									Get a resulting "client token" from each player via a messaging service of your choice. Then, either:
-									<ol type="a">
-										<li>Click the "Accept Multiple Clients" button, and paste in text containing multiple client tokens. <b>This will try to find tokens in <i>any</i> text, ignoring everything else.</b> Pasting a chatroom log (containing, for example, usernames and timestamps mixed with tokens) is the expected usage.</li>
-										<li>Paste each token into the appropriate "Client Token" field and "Accept Client" on each. A token can be identified by the slugified player name in the first few characters.</li>
-									</ol>
-								</li>
-							</ol>
+							<li>Start the server.</li>
+							<li>Copy your token and share it with your players.</li>
+							<li>Wait for them to connect!</li>
+						</ol>
 						</p>
-						<p>Once a player's client has been "accepted," it will receive updates from the DM's tracker. <i>Please note that this system is highly experimental. Your experience may vary.</i></p>
+						<p>${$btnStartServer}${$btnGetToken}</p>
+						<p><i>Please note that this system is highly experimental. Your experience may vary.</i></p>
 					</div>
 				</div>`.appendTo($wrpHelp);
 
 				UiUtil.addModalSep($modalInner);
 
-				const $wrpTop = UiUtil.$getAddModalRow($modalInner, "div");
+				const $wrpConnected = UiUtil.$getAddModalRow($modalInner, "div").addClass("flx-col");
 
-				const $btnAddClient = $(`<button class="btn btn-xs btn-primary" title="Add Client">Add Player</button>`).click(() => addClientRow());
+				const showConnected = () => {
+					if (!srvPeer) return $wrpConnected.html(`<div class="w-100 flex-vh-center"><i>No clients connected.</i></div>`);
 
-				const $btnCopyServers = $(`<button class="btn btn-xs btn-primary" title="Copy any available server tokens to the clipboard">Copy Server Tokens</button>`)
-					.click(async () => {
-						const targetRows = p2pMeta.rows.filter(it => !it.isDeleted && !it.$iptTokenClient.attr("disabled"));
-						if (!targetRows.length) {
-							JqueryUtil.doToast({
-								content: `No free server tokens to copy. Generate some!`,
-								type: "warning"
-							});
-						} else {
-							await MiscUtil.pCopyTextToClipboard(targetRows.map(it => it.$iptTokenServer.val()).join("\n\n"));
-							JqueryUtil.showCopiedEffect($btnGenServerTokens);
-						}
-					});
-
-				const $btnAcceptClients = $(`<button class="btn btn-xs btn-primary" title="Open a prompt into which text containing client tokens can be pasted">Accept Multiple Clients</button>`)
-					.click(() => {
-						const {$modalInner, doClose} = UiUtil.getShowModal({title: "Accept Multiple Clients"});
-
-						const $iptText = $(`<textarea class="form-control dm_init__pl_textarea block mb-2"/>`)
-							.keydown(() => $iptText.removeClass("error-background"));
-
-						const $btnAccept = $(`<button class="btn btn-xs btn-primary block text-center" title="Add Client">Accept Multiple Clients</button>`)
-							.click(async () => {
-								$iptText.removeClass("error-background");
-								const txt = $iptText.val();
-								if (!txt.trim() || !PeerUtil.containsAnyTokens(txt)) {
-									$iptText.addClass("error-background");
-								} else {
-									const connected = await PeerUtil.pConnectClientsToServers(p2pMeta.serverInfo, txt);
-									board.doBindAlertOnNavigation();
-									connected.forEach(serverInfo => {
-										serverInfo.rowMeta.$iptTokenClient.val(serverInfo._tempTokenToDisplay || "").attr("disabled", true);
-										serverInfo.rowMeta.$btnAcceptClientToken.attr("disabled", true);
-										delete serverInfo._tempTokenToDisplay;
-									});
-									doClose();
-									sendStateToClientsDebounced();
-								}
-							});
-
-						$$`<div>
-							<p>Paste text containing one or more client tokens, and click "Accept Multiple Clients"</p>
-							${$iptText}
-							<div class="flex-vh-center">${$btnAccept}</div>
-						</div>`.appendTo($modalInner)
-					});
-
-				$$`
-					<div class="row w-100">
-						<div class="col-12">
-							<div class="flex-inline-v-center mr-2">
-								<span class="mr-1">Add a player (client):</span>
-								${$btnAddClient}
-							</div>
-							<div class="flex-inline-v-center mr-2">
-								<span class="mr-1">Copy all un-paired server tokens:</span>
-								${$btnCopyServers}
-							</div>
-							<div class="flex-inline-v-center mr-2">
-								<span class="mr-1">Mass-accept clients:</span>
-								${$btnAcceptClients}
-							</div>
-						</div>
-					</div>
-				`.appendTo($wrpTop);
-
-				UiUtil.addModalSep($modalInner);
-
-				const $btnGenServerTokens = $(`<button class="btn btn-primary btn-xs">Generate All</button>`)
-					.click(() => pGetServerTokens(p2pMeta.rows));
-
-				UiUtil.$getAddModalRow($modalInner, "div")
-					.append($$`
-					<div class="row w-100">
-						<div class="col-2 bold">Player Name</div>
-						<div class="col-3-5 bold">Server Token</div>
-						<div class="col-1 text-center">${$btnGenServerTokens}</div>
-						<div class="col-3-5 bold">Client Token</div>
-					</div>
-				`);
-
-				const _get$rowTemplate = (
-					$iptName,
-					$iptTokenServer,
-					$btnGenServerToken,
-					$iptTokenClient,
-					$btnAcceptClientToken,
-					$btnDeleteClient
-				) => $$`<div class="row w-100 mb-2 flex">
-					<div class="col-2">${$iptName}</div>
-					<div class="col-3-5">${$iptTokenServer}</div>
-					<div class="col-1 flex-vh-center">${$btnGenServerToken}</div>
-					<div class="col-3-5">${$iptTokenClient}</div>
-					<div class="col-1-5 flex-vh-center">${$btnAcceptClientToken}</div>
-					<div class="col-0-5 flex-vh-center">${$btnDeleteClient}</div>
-				</div>`;
-
-				const addClientRow = () => {
-					const rowMeta = {id: CryptUtil.uid()};
-
-					const $iptName = $(`<input class="form-control input-sm">`)
-						.keydown(evt => {
-							$iptName.removeClass("error-background");
-							if (evt.which === 13) $btnGenServerToken.click();
-						});
-
-					const $iptTokenServer = $(`<input class="form-control input-sm copyable code" readonly disabled>`)
-						.click(async () => {
-							await MiscUtil.pCopyTextToClipboard($iptTokenServer.val());
-							JqueryUtil.showCopiedEffect($iptTokenServer);
-						}).disableSpellcheck();
-
-					const $btnGenServerToken = $(`<button class="btn btn-xs btn-primary" title="Generate Server Token">Generate</button>`)
-						.click(() => pGetServerTokens([rowMeta]));
-
-					const $iptTokenClient = $(`<input class="form-control input-sm code" disabled>`)
-						.keydown(evt => {
-							$iptTokenClient.removeClass("error-background");
-							if (evt.which === 13) $btnAcceptClientToken.click();
-						}).disableSpellcheck();
-
-					const $btnAcceptClientToken = $(`<button class="btn btn-xs btn-primary" title="Accept Client Token" disabled>Accept Client</button>`)
-						.click(async () => {
-							const token = $iptTokenClient.val();
-							if (PeerUtil.isValidToken(token)) {
-								try {
-									await PeerUtil.pConnectClientsToServers([rowMeta.serverInfo], token);
-									board.doBindAlertOnNavigation();
-									$iptTokenClient.prop("disabled", true);
-									$btnAcceptClientToken.prop("disabled", true);
-									sendStateToClientsDebounced();
-								} catch (e) {
-									JqueryUtil.doToast({
-										content: `Failed to accept client token! Are you sure it was valid? (See the log for more details.)`,
-										type: "danger"
-									});
-									setTimeout(() => { throw e; });
-								}
-							} else $iptTokenClient.addClass("error-background");
-						});
-
-					const $btnDeleteClient = $(`<button class="btn btn-xs btn-danger"><span class="glyphicon glyphicon-trash"/></button>`)
-						.click(() => {
-							rowMeta.$row.remove();
-							rowMeta.isDeleted = true;
-							if (rowMeta.serverInfo) {
-								rowMeta.serverInfo.server.close();
-								rowMeta.serverInfo.isDeleted = true;
-							}
-
-							if (!$wrpRowsInner.find(`.row`).length) addClientRow();
-						});
-
-					rowMeta.$row = _get$rowTemplate(
-						$iptName,
-						$iptTokenServer,
-						$btnGenServerToken,
-						$iptTokenClient,
-						$btnAcceptClientToken,
-						$btnDeleteClient
-					).appendTo($wrpRowsInner);
-
-					rowMeta.$iptName = $iptName;
-					rowMeta.$iptTokenServer = $iptTokenServer;
-					rowMeta.$btnGenServerToken = $btnGenServerToken;
-					rowMeta.$iptTokenClient = $iptTokenClient;
-					rowMeta.$btnAcceptClientToken = $btnAcceptClientToken;
-					p2pMeta.rows.push(rowMeta);
-
-					return rowMeta;
+					let stack = `<div class="w-100"><h5>Connected Clients:</h5><ul>`;
+					srvPeer.getActiveConnections()
+						.map(it => it.label || "(Unknown)")
+						.sort(SortUtil.ascSortLower)
+						.forEach(it => stack += `<li>${it.escapeQuotes()}</li>`);
+					stack += "</ul></div>";
+					$wrpConnected.html(stack);
 				};
 
-				const $wrpRows = UiUtil.$getAddModalRow($modalInner, "div");
-				const $wrpRowsInner = $(`<div class="w-100"/>`).appendTo($wrpRows);
+				if (srvPeer) srvPeer.onTemp("connection", showConnected);
 
-				if (p2pMeta.rows.length) p2pMeta.rows.forEach(row => row.$row.appendTo($wrpRowsInner));
-				else addClientRow();
+				showConnected();
 			});
 
-		// nop on receiving a message; we want to send only
-		// TODO expand this, to allow e.g. players to set statuses or assign damage/healing (at DM approval?)
-		const _DM_MESSAGE_RECEIVER = () => {};
-		const _DM_ERROR_HANDLER = function (err) {
-			if (!this.isClosed) {
-				JqueryUtil.doToast({
-					content: `Server error:\n${err ? err.message || err : "(Unknown error)"}`,
-					type: "danger"
-				});
-			}
-		};
-
-		const pGetServerTokens = async rowMetas => {
-			const targetRows = rowMetas.filter(it => !it.isDeleted).filter(it => !it.isActive);
-			if (targetRows.every(it => it.isActive)) {
-				return JqueryUtil.doToast({
-					content: "No rows require Server Token generation!",
-					type: "warning"
-				});
-			}
-
-			let anyInvalidNames = false;
-			targetRows.forEach(r => {
-				r.$iptName.removeClass("error-background");
-				if (!r.$iptName.val().trim()) {
-					anyInvalidNames = true;
-					r.$iptName.addClass("error-background");
-				}
-			});
-			if (anyInvalidNames) return;
-
-			const names = targetRows.map(r => {
-				r.isActive = true;
-
-				r.$iptName.attr("disabled", true);
-				r.$btnGenServerToken.attr("disabled", true);
-
-				return r.$iptName.val();
-			});
-
-			if (p2pMeta.serverInfo) {
-				await p2pMeta.serverInfo;
-
-				const serverInfo = await PeerUtil.pInitialiseServersAddToExisting(
-					names,
-					p2pMeta.serverInfo,
-					_DM_MESSAGE_RECEIVER,
-					_DM_ERROR_HANDLER,
-					{shortTokens: !!cfg.playerInitShortTokens}
-				);
-
-				return targetRows.map((r, i) => {
-					r.name = serverInfo[i].name;
-					r.serverInfo = serverInfo[i];
-					r.$iptTokenServer.val(serverInfo[i].textifiedSdp).attr("disabled", false);
-
-					serverInfo[i].rowMeta = r;
-
-					r.$iptTokenClient.attr("disabled", false);
-					r.$btnAcceptClientToken.attr("disabled", false);
-
-					return serverInfo[i].textifiedSdp;
-				});
-			} else {
-				p2pMeta.serverInfo = (async () => {
-					p2pMeta.serverInfo = await PeerUtil.pInitialiseServers(names, _DM_MESSAGE_RECEIVER, _DM_ERROR_HANDLER, {shortTokens: !!cfg.playerInitShortTokens});
-
-					targetRows.forEach((r, i) => {
-						r.name = p2pMeta.serverInfo[i].name;
-						r.serverInfo = p2pMeta.serverInfo[i];
-						r.$iptTokenServer.val(p2pMeta.serverInfo[i].textifiedSdp).attr("disabled", false);
-
-						p2pMeta.serverInfo[i].rowMeta = r;
-
-						r.$iptTokenClient.attr("disabled", false);
-						r.$btnAcceptClientToken.attr("disabled", false);
-					});
-				})();
-
-				await p2pMeta.serverInfo;
-				return targetRows.map(r => r.serverInfo.textifiedSdp);
-			}
-		};
-
-		$wrpTracker.data("doConnectLocal", async (clientView) => {
-			// generate a stub/fake row meta
-			const rowMeta = {
-				id: CryptUtil.uid(),
-				$row: $(),
-				$iptName: $(`<input value="local">`),
-				$iptTokenServer: $(),
-				$btnGenServerToken: $(),
-				$iptTokenClient: $(),
-				$btnAcceptClientToken: $()
-			};
-
-			p2pMeta.rows.push(rowMeta);
-
-			const serverTokens = await pGetServerTokens([rowMeta]);
-			const clientData = await PeerUtil.pInitialiseClient(
-				serverTokens[0],
-				msg => clientView.handleMessage(msg),
-				() => {} // ignore local errors
-			);
-			clientView.clientData = clientData;
-			await PeerUtil.pConnectClientsToServers([rowMeta.serverInfo], clientData.textifiedSdp);
-			sendStateToClientsDebounced();
+		$wrpTracker.data("pDoConnectLocal", async () => {
+			await startServer();
+			return srvPeer.token;
 		});
 
 		const $wrpLockSettings = $(`<div class="btn-group flex"/>`).appendTo($wrpUtils);
 		const $btnLock = $(`<button class="btn btn-danger btn-xs" title="Lock Tracker"><span class="glyphicon glyphicon-lock"></span></button>`).appendTo($wrpLockSettings);
 		$btnLock.on("click", () => {
 			if (cfg.isLocked) {
-				$btnLock.removeClass("btn-success").addClass("btn-danger").attr("title", "Lock Tracker");
+				$btnLock.removeClass("btn-success").addClass("btn-danger").title("Lock Tracker");
 				$(".dm-init-lockable").removeClass("disabled");
 				$("input.dm-init-lockable").prop("disabled", false);
 			} else {
-				$btnLock.removeClass("btn-danger").addClass("btn-success").attr("title", "Unlock Tracker");
+				$btnLock.removeClass("btn-danger").addClass("btn-success").title("Unlock Tracker");
 				$(".dm-init-lockable").addClass("disabled");
 				$("input.dm-init-lockable").prop("disabled", true);
 			}
@@ -511,13 +325,14 @@ class InitiativeTracker {
 					cbClose: () => {
 						handleStatColsChange();
 						doUpdateExternalStates();
-					}
+					},
 				});
 				UiUtil.addModalSep($modalInner);
 				UiUtil.$getAddModalRowCb($modalInner, "Roll initiative", cfg, "isRollInit");
 				UiUtil.$getAddModalRowCb($modalInner, "Roll hit points", cfg, "isRollHp");
 				UiUtil.addModalSep($modalInner);
-				UiUtil.$getAddModalRowCb($modalInner, "Player View: Show exact HP", cfg, "playerInitShowExactHp");
+				UiUtil.$getAddModalRowCb($modalInner, "Player View: Show exact player HP", cfg, "playerInitShowExactPlayerHp");
+				UiUtil.$getAddModalRowCb($modalInner, "Player View: Show exact monster HP", cfg, "playerInitShowExactMonsterHp");
 				UiUtil.$getAddModalRowCb($modalInner, "Player View: Auto-hide new monsters", cfg, "playerInitHideNewMonster");
 				UiUtil.$getAddModalRowCb($modalInner, "Player View: Show ordinals", cfg, "playerInitShowOrdinals", "For example, if you add two Goblins, one will be Goblin (1) and the other Goblin (2), rather than having identical names.");
 				UiUtil.$getAddModalRowCb($modalInner, "Player View: Shorten server tokens", cfg, "playerInitShortTokens", "Server tokens will be roughly half as many characters, but will contain non-standard characters.");
@@ -553,7 +368,7 @@ class InitiativeTracker {
 								// input data
 								p: "", // populate with...
 								po: null, // populate with... (previous value)
-								a: "" // abbreviation
+								a: "", // abbreviation
 							};
 							cfg.statsCols.push(thisCfg);
 						}
@@ -663,7 +478,7 @@ class InitiativeTracker {
 		const $btnLoad = $(`<button title="Import an encounter from the Bestiary" class="btn btn-success btn-xs dm-init-lockable"><span class="glyphicon glyphicon-upload"/></button>`).appendTo($wrpLoadReset)
 			.click((evt) => {
 				if (cfg.isLocked) return;
-				ContextUtil.handleOpenContextMenu(evt, $btnLoad, contextId);
+				ContextUtil.pOpenMenu(evt, menu);
 			});
 		$(`<button title="Reset" class="btn btn-danger btn-xs dm-init-lockable"><span class="glyphicon glyphicon-trash"/></button>`).appendTo($wrpLoadReset)
 			.click(() => {
@@ -682,14 +497,13 @@ class InitiativeTracker {
 			if (cfg.isLocked) return;
 			const flags = {
 				doClickFirst: false,
-				isWait: false
+				isWait: false,
 			};
 
 			const {$modalInner, doClose} = UiUtil.getShowModal();
-			$modalInner.addClass("flex-col");
 
 			const $controls = $(`<div class="split" style="flex-shrink: 0"/>`).appendTo($modalInner);
-			const $srch = $(`<input class="ui-search__ipt-search search form-control" autocomplete="off" placeholder="Search...">`).appendTo($controls);
+			const $iptSearch = $(`<input class="ui-search__ipt-search search form-control" autocomplete="off" placeholder="Search...">`).blurOnEsc().appendTo($controls);
 			const $wrpCount = $(`
 				<div class="ui-search__ipt-search-sub-wrp" style="padding-right: 0;">
 					<div style="margin-right: 7px;">Add</div>
@@ -717,33 +531,36 @@ class InitiativeTracker {
 
 			const showMsgIpt = () => {
 				flags.isWait = true;
-				$results.empty().append(UiUtil.getSearchEnter());
+				$results.empty().append(SearchWidget.getSearchEnter());
 			};
 
-			const showMsgDots = () => $results.empty().append(UiUtil.getSearchLoading());
+			const showMsgDots = () => $results.empty().append(SearchWidget.getSearchLoading());
 
 			const showNoResults = () => {
 				flags.isWait = true;
-				$results.empty().append(UiUtil.getSearchNoResults());
+				$results.empty().append(SearchWidget.getSearchNoResults());
 			};
 
+			const $ptrRows = {_: []};
+
 			const doSearch = () => {
-				const srch = $srch.val().trim();
+				const srch = $iptSearch.val().trim();
 				const MAX_RESULTS = 75; // hard cap results
 
 				const index = board.availContent["Creature"];
 				const results = index.search(srch, {
 					fields: {
 						n: {boost: 5, expand: true},
-						s: {expand: true}
+						s: {expand: true},
 					},
 					bool: "AND",
-					expand: true
+					expand: true,
 				});
 				const resultCount = results.length ? results.length : index.documentStore.length;
 				const toProcess = results.length ? results : Object.values(index.documentStore.docs).slice(0, 75).map(it => ({doc: it}));
 
 				$results.empty();
+				$ptrRows._ = [];
 				if (toProcess.length) {
 					const handleClick = async r => {
 						const name = r.doc.n;
@@ -754,14 +571,14 @@ class InitiativeTracker {
 						await pMakeRow({
 							nameOrMeta: name,
 							source,
-							isRollHp: $cbRoll.prop("checked")
+							isRollHp: $cbRoll.prop("checked"),
 						});
 						if (count > 1) {
 							for (let i = 1; i < count; ++i) {
 								await pMakeRow({
 									nameOrMeta: name,
 									source,
-									isRollHp: $cbRoll.prop("checked")
+									isRollHp: $cbRoll.prop("checked"),
 								});
 							}
 						}
@@ -771,9 +588,9 @@ class InitiativeTracker {
 						doClose();
 					};
 
-					const get$Row = (r) => {
+					const $getRow = (r) => {
 						return $(`
-							<div class="ui-search__row">
+							<div class="ui-search__row" tabindex="0">
 								<span>${r.doc.n}</span>
 								<span>${r.doc.s ? `<i title="${Parser.sourceJsonToFull(r.doc.s)}">${Parser.sourceJsonToAbv(r.doc.s)}${r.doc.p ? ` p${r.doc.p}` : ""}</i>` : ""}</span>
 							</div>
@@ -788,7 +605,11 @@ class InitiativeTracker {
 
 					const res = toProcess.slice(0, MAX_RESULTS); // hard cap at 75 results
 
-					res.forEach(r => get$Row(r).on("click", () => handleClick(r)).appendTo($results));
+					res.forEach(r => {
+						const $row = $getRow(r).appendTo($results);
+						SearchWidget.bindRowHandlers({result: r, $row, $ptrRows, fnHandleClick: handleClick});
+						$ptrRows._.push($row);
+					});
 
 					if (resultCount > MAX_RESULTS) {
 						const diff = resultCount - MAX_RESULTS;
@@ -800,13 +621,14 @@ class InitiativeTracker {
 				}
 			};
 
-			UiUtil.bindAutoSearch($srch, {
-				flags: flags,
-				search: doSearch,
-				showWait: showMsgDots
+			SearchWidget.bindAutoSearch($iptSearch, {
+				flags,
+				fnSearch: doSearch,
+				fnShowWait: showMsgDots,
+				$ptrRows,
 			});
 
-			$srch.focus();
+			$iptSearch.focus();
 			doSearch();
 		});
 
@@ -816,7 +638,7 @@ class InitiativeTracker {
 				const isCb = $ipt.attr("type") === "checkbox";
 				return {
 					v: isCb ? $ipt.prop("checked") : $ipt.val(),
-					id: $(e).attr("data-id")
+					id: $(e).attr("data-id"),
 				};
 			}).get();
 		}
@@ -830,7 +652,7 @@ class InitiativeTracker {
 				const n = $iptDisplayName.length ? {
 					n: $row.find(`input.name`).val(),
 					d: $iptDisplayName.val(),
-					s: $row.find(`input.scaledCr`).val() || ""
+					s: $row.find(`input.scaledCr`).val() || "",
 				} : $row.find(`input.name`).val();
 				const out = {
 					n,
@@ -841,7 +663,7 @@ class InitiativeTracker {
 					a: 0 + $row.hasClass(`dm-init-row-active`),
 					s: $row.find(`input.source`).val(),
 					c: $conds.length ? $conds.map((i, e) => $(e).data("getState")()).get() : [],
-					v: $row.find(`.dm_init__btn_eye`).hasClass(`btn-primary`)
+					v: $row.find(`.dm_init__btn_eye`).hasClass(`btn-primary`),
 				};
 				if (customName) out.m = customName;
 				return out;
@@ -855,12 +677,13 @@ class InitiativeTracker {
 				p: cfg.importIsAddPlayers,
 				a: cfg.importIsAppend,
 				k: cfg.statsAddColumns,
-				piH: cfg.playerInitShowExactHp,
+				piHp: cfg.playerInitShowExactPlayerHp,
+				piHm: cfg.playerInitShowExactMonsterHp,
 				piV: cfg.playerInitHideNewMonster,
 				piO: cfg.playerInitShowOrdinals,
 				piS: cfg.playerInitShortTokens,
 				c: cfg.statsCols.filter(it => !it.isDeleted),
-				n: $iptRound.val()
+				n: $iptRound.val(),
 			};
 		}
 
@@ -891,14 +714,14 @@ class InitiativeTracker {
 					i: $row.find(`input.score`).val(),
 					a: 0 + $row.hasClass(`dm-init-row-active`),
 					c: $conds.length ? $conds.map((i, e) => $(e).data("getState")()).get() : [],
-					k: statsVals
+					k: statsVals,
 				};
 
 				if ($row.hasClass("dm-init-row-rename")) out.m = $row.find(`.dm-init-row-link-name`).text();
 
 				const hp = Number($row.find(`input.hp`).val());
 				const hpMax = Number($row.find(`input.hp-max`).val());
-				if (cfg.playerInitShowExactHp) {
+				if ((!isMonster && cfg.playerInitShowExactPlayerHp) || (isMonster && cfg.playerInitShowExactMonsterHp)) {
 					out.h = hp;
 					out.g = hpMax;
 				} else {
@@ -912,14 +735,15 @@ class InitiativeTracker {
 			return {
 				r: rows,
 				c: visibleStatsCols,
-				n: $iptRound.val()
+				n: $iptRound.val(),
 			};
 		}
 
 		$wrpTracker.data("getState", getSaveableState);
 		$wrpTracker.data("getSummary", () => {
 			const nameList = $wrpEntries.find(`.dm-init-row`).map((i, e) => $(e).find(`input.name`).val()).get();
-			return `${nameList.length} creature${nameList.length === 1 ? "" : "s"} ${nameList.length ? `(${nameList.slice(0, 3).join(", ")}${nameList.length > 3 ? "..." : ""})` : ""}`
+			const nameListFilt = nameList.filter(it => it.trim());
+			return `${nameList.length} creature${nameList.length === 1 ? "" : "s"} ${nameListFilt.length ? `(${nameListFilt.slice(0, 3).join(", ")}${nameListFilt.length > 3 ? "..." : ""})` : ""}`
 		});
 
 		function setNextActive () {
@@ -984,7 +808,7 @@ class InitiativeTracker {
 				isRollInit,
 				isRollHp,
 				statsCols,
-				isVisible
+				isVisible,
 			} = Object.assign({
 				nameOrMeta: "",
 				customName: "",
@@ -994,7 +818,7 @@ class InitiativeTracker {
 				conditions: [],
 				isRollInit: cfg.isRollInit,
 				isRollHp: false,
-				isVisible: !cfg.playerInitHideNewMonster
+				isVisible: !cfg.playerInitHideNewMonster,
 			}, opts || {});
 
 			const isMon = !!source;
@@ -1022,12 +846,13 @@ class InitiativeTracker {
 				const curMon = $rows.find(".init-wrp-creature").filter((i, e) => $(e).parent().find(`input.name`).val() === name && $(e).parent().find(`input.source`).val() === source);
 				let monNum = null;
 				if (curMon.length) {
-					if (curMon.length === 1) {
+					const $dispsNumber = curMon.map((i, e) => $(e).find(`span[data-number]`).data("number"));
+					if (curMon.length === 1 && !$dispsNumber.length) {
 						const r = $(curMon.get(0));
 						r.find(`.init-wrp-creature-link`).append(`<span data-number="1" class="dm_init__number">(1)</span>`);
 						monNum = 2;
 					} else {
-						monNum = curMon.map((i, e) => $(e).find(`span[data-number]`).data("number")).get().reduce((a, b) => Math.max(Number(a), Number(b)), 0) + 1;
+						monNum = $dispsNumber.get().reduce((a, b) => Math.max(Number(a), Number(b)), 0) + 1;
 					}
 				}
 
@@ -1070,11 +895,11 @@ class InitiativeTracker {
 						await pMakeRow({
 							nameOrMeta,
 							init: evt.shiftKey ? "" : $iptScore.val(),
-							isActive: $wrpRow.hasClass("dm-init-row-active"),
+							isActive: !evt.shiftKey && $wrpRow.hasClass("dm-init-row-active"),
 							source,
 							isRollHp: cfg.isRollHp,
 							statsCols: evt.shiftKey ? null : getStatColsState($wrpRow),
-							isVisible: $wrpRow.find(`.dm_init__btn_eye`).hasClass("btn-primary")
+							isVisible: $wrpRow.find(`.dm_init__btn_eye`).hasClass("btn-primary"),
 						});
 						doSort(cfg.sort);
 					}).appendTo($wrpBtnsRhs);
@@ -1092,7 +917,7 @@ class InitiativeTracker {
 					name,
 					color,
 					turns,
-					onStateChange: () => doUpdateExternalStates()
+					onStateChange: () => doUpdateExternalStates(),
 				});
 				$cond.appendTo($conds);
 			}
@@ -1102,7 +927,7 @@ class InitiativeTracker {
 			$(`<button class="btn btn-warning btn-xs dm-init-row-btn dm-init-row-btn-flag" title="Add Condition" tabindex="-1"><span class="glyphicon glyphicon-flag"/></button>`)
 				.appendTo($wrpConds)
 				.on("click", () => {
-					const {$modalInner, doClose} = UiUtil.getShowModal({noMinHeight: true});
+					const {$modalInner, doClose} = UiUtil.getShowModal({isMinHeight0: true});
 
 					const $wrpRows = $(`<div class="dm-init-modal-wrp-rows"/>`).appendTo($modalInner);
 
@@ -1156,7 +981,7 @@ class InitiativeTracker {
 			const $wrpRhs = $(`<div class="dm-init-row-rhs"/>`).appendTo($wrpRow);
 			const hpVals = {
 				curHp: hp,
-				maxHp: hpMax
+				maxHp: hpMax,
 			};
 
 			const doUpdateHpColors = () => {
@@ -1207,11 +1032,11 @@ class InitiativeTracker {
 						$iptHp.val(hpVals.curHp);
 						$iptHpMax.val(hpVals.maxHp);
 					} else if (isRollHp && m.hp.formula) {
-						const roll = Renderer.dice.roll2(m.hp.formula, {
-							user: false,
+						const roll = await Renderer.dice.pRoll2(m.hp.formula, {
+							isUser: false,
 							name: getRollName(m),
-							label: "HP"
-						});
+							label: "HP",
+						}, {isResultUsed: true});
 						hpVals.curHp = hpVals.maxHp = roll;
 						$iptHp.val(roll);
 						$iptHpMax.val(roll);
@@ -1219,7 +1044,7 @@ class InitiativeTracker {
 
 					// roll initiative
 					if (!init && isRollInit) {
-						$iptScore.val(rollInitiative(m));
+						$iptScore.val(await pRollInitiative(m));
 					}
 
 					doUpdateHpColors();
@@ -1293,7 +1118,7 @@ class InitiativeTracker {
 						const isCb = $ipt.attr("type") === "checkbox";
 						existing[id] = {
 							v: isCb ? $ipt.prop("checked") : $ipt.val(),
-							id
+							id,
 						};
 					});
 				}
@@ -1451,21 +1276,22 @@ class InitiativeTracker {
 			if (!firstLoad && !noReset) doReset();
 			firstLoad = false;
 
-			await Promise.all((state.r || []).map(r => {
-				return pMakeRow({
-					nameOrMeta: r.n,
-					customName: r.m,
-					hp: r.h,
-					hpMax: r.g,
-					init: r.i,
-					isActive: r.a,
-					source: r.s,
-					conditions: r.c,
-					statsCols: r.k,
-					isVisible: r.v,
-					isRollInit: r.i == null
+			for (const row of (state.r || [])) {
+				await pMakeRow({
+					nameOrMeta: row.n,
+					customName: row.m,
+					hp: row.h,
+					hpMax: row.g,
+					init: row.i,
+					isActive: row.a,
+					source: row.s,
+					conditions: row.c,
+					statsCols: row.k,
+					isVisible: row.v,
+					isRollInit: row.i == null,
 				});
-			}));
+			}
+
 			doSort(cfg.sort);
 			checkSetFirstActive();
 			handleStatColsChange();
@@ -1477,23 +1303,23 @@ class InitiativeTracker {
 			return `Initiative Tracker \u2014 ${monster.name}`;
 		}
 
-		function rollInitiative (monster) {
-			return Renderer.dice.roll2(`1d20${Parser.getAbilityModifier(monster.dex)}`, {
-				user: false,
+		function pRollInitiative (monster) {
+			return Renderer.dice.pRoll2(`1d20${Parser.getAbilityModifier(monster.dex)}`, {
+				isUser: false,
 				name: getRollName(monster),
-				label: "Initiative"
-			});
+				label: "Initiative",
+			}, {isResultUsed: true});
 		}
 
-		function getOrRollHp (monster) {
+		async function pGetOrRollHp (monster) {
 			if (!cfg.isRollHp && monster.hp.average) {
 				return `${monster.hp.average}`;
 			} else if (cfg.isRollHp && monster.hp.formula) {
-				return `${Renderer.dice.roll2(monster.hp.formula, {
-					user: false,
+				return `${await Renderer.dice.pRoll2(monster.hp.formula, {
+					isUser: false,
 					name: getRollName(monster),
-					label: "HP"
-				})}`;
+					label: "HP",
+				}, {isResultUsed: true})}`;
 			}
 			return "";
 		}
@@ -1504,7 +1330,7 @@ class InitiativeTracker {
 				d: "DESC",
 				m: false,
 				g: true,
-				r: []
+				r: [],
 			};
 
 			if (cfg.importIsAddPlayers) {
@@ -1538,7 +1364,7 @@ class InitiativeTracker {
 								// input data
 								p: populateEntry ? populateEntry[0] : "", // populate with...
 								po: null, // populate with... (previous value)
-								a: colName // abbreviation
+								a: colName, // abbreviation
 							};
 							colIndex[i] = newCol;
 							cfg.statsCols.push(newCol);
@@ -1550,7 +1376,7 @@ class InitiativeTracker {
 								i: "", // score
 								a: 0, // is active?
 								c: [], // conditions
-								v: true
+								v: true,
 							};
 
 							if (playerDetails.x && playerDetails.x.length) { // extra stats
@@ -1578,7 +1404,7 @@ class InitiativeTracker {
 									i: "",
 									a: 0,
 									c: [],
-									v: true
+									v: true,
 								});
 							});
 						});
@@ -1594,8 +1420,8 @@ class InitiativeTracker {
 					const count = Number(it.c);
 					const hash = it.h;
 					const scaling = (() => {
-						if (it.uid) {
-							const m = /_([\d.,]+)$/.exec(it.uid);
+						if (it.customHashId) {
+							const m = /_([\d.,]+)$/.exec(it.customHashId);
 							if (m) {
 								return Number(m[1]);
 							} else return null;
@@ -1609,39 +1435,39 @@ class InitiativeTracker {
 									ScaleCreature.scale(mon, scaling).then(scaled => {
 										resolve({
 											count,
-											monster: scaled
+											monster: scaled,
 										});
 									});
 								} else {
 									resolve({
 										count,
-										monster: mon
+										monster: mon,
 									});
 								}
 							});
 					})
 				}));
-				toAdd.forEach(it => {
-					const groupInit = cfg.importIsRollGroups && cfg.isRollInit ? rollInitiative(it.monster) : null;
-					const groupHp = cfg.importIsRollGroups ? getOrRollHp(it.monster) : null;
+				await Promise.all(toAdd.map(async it => {
+					const groupInit = cfg.importIsRollGroups && cfg.isRollInit ? await pRollInitiative(it.monster) : null;
+					const groupHp = cfg.importIsRollGroups ? await pGetOrRollHp(it.monster) : null;
 
-					[...new Array(it.count || 1)].forEach(() => {
-						const hp = `${cfg.importIsRollGroups ? groupHp : getOrRollHp(it.monster)}`;
+					await Promise.all([...new Array(it.count || 1)].map(async () => {
+						const hp = `${cfg.importIsRollGroups ? groupHp : await pGetOrRollHp(it.monster)}`;
 						toLoad.r.push({
 							n: {
 								name: it.monster.name,
 								displayName: it.monster._displayName,
-								scaledTo: it.monster._isScaledCr
+								scaledTo: it.monster._isScaledCr,
 							},
-							i: cfg.isRollInit ? `${cfg.importIsRollGroups ? groupInit : rollInitiative(it.monster)}` : null,
+							i: cfg.isRollInit ? `${cfg.importIsRollGroups ? groupInit : await pRollInitiative(it.monster)}` : null,
 							a: 0,
 							s: it.monster.source,
 							c: [],
 							h: hp,
-							g: hp
+							g: hp,
 						});
-					});
-				});
+					}));
+				}));
 				await pLoadState(toLoad, cfg.importIsAppend);
 			} else await pLoadState(toLoad, cfg.importIsAppend);
 		}
@@ -1668,7 +1494,7 @@ class InitiativeTracker {
 				else if (isVisNum === 1) isVisNum = isTriState ? 2 : 0;
 				else if (isVisNum === 2) isVisNum = 0;
 
-				$btnVisible.attr("title", getTitle());
+				$btnVisible.title(getTitle());
 				$btnVisible.attr("class", getClasses());
 				$dispIcon.attr("class", getIconClasses());
 
@@ -1690,24 +1516,24 @@ InitiativeTracker.STAT_COLUMNS = {
 	hr0: InitiativeTracker._GET_STAT_COLUMN_HR(),
 	hpFormula: {
 		name: "HP Formula",
-		get: mon => (mon.hp || {}).formula
+		get: mon => (mon.hp || {}).formula,
 	},
 	armorClass: {
 		name: "Armor Class",
 		abv: "AC",
-		get: mon => mon.ac[0] ? (mon.ac[0].ac || mon.ac[0]) : null
+		get: mon => mon.ac[0] ? (mon.ac[0].ac || mon.ac[0]) : null,
 	},
 	passivePerception: {
 		name: "Passive Perception",
 		abv: "PP",
-		get: mon => mon.passive
+		get: mon => mon.passive,
 	},
 	speed: {
 		name: "Speed",
 		abv: "SPD",
 		get: mon => Math.max(0, ...Object.values(mon.speed || {})
 			.map(it => it.number ? it.number : it)
-			.filter(it => typeof it === "number"))
+			.filter(it => typeof it === "number")),
 	},
 	spellDc: {
 		name: "Spell DC",
@@ -1720,12 +1546,12 @@ InitiativeTracker.STAT_COLUMNS = {
 					it.replace(/DC (\d+)/g, (...m) => found.push(Number(m[1])));
 					return Math.max(...found);
 				}).filter(Boolean)
-			}))
+			})),
 	},
 	legendaryActions: {
 		name: "Legendary Actions",
 		abv: "LA",
-		get: mon => mon.legendaryActions || mon.legendary ? 3 : null
+		get: mon => mon.legendaryActions || mon.legendary ? 3 : null,
 	},
 	hr1: InitiativeTracker._GET_STAT_COLUMN_HR(),
 	...(() => {
@@ -1734,7 +1560,7 @@ InitiativeTracker.STAT_COLUMNS = {
 			out[`${it}Save`] = {
 				name: `${Parser.attAbvToFull(it)} Save`,
 				abv: it.toUpperCase(),
-				get: mon => mon.save && mon.save[it] ? mon.save[it] : Parser.getAbilityModifier(mon[it])
+				get: mon => mon.save && mon.save[it] ? mon.save[it] : Parser.getAbilityModifier(mon[it]),
 			};
 		});
 		return out;
@@ -1746,7 +1572,7 @@ InitiativeTracker.STAT_COLUMNS = {
 			out[`${it}Bonus`] = {
 				name: `${Parser.attAbvToFull(it)} Bonus`,
 				abv: it.toUpperCase(),
-				get: mon => Parser.getAbilityModifier(mon[it])
+				get: mon => Parser.getAbilityModifier(mon[it]),
 			};
 		});
 		return out;
@@ -1758,7 +1584,7 @@ InitiativeTracker.STAT_COLUMNS = {
 			out[`${it}Score`] = {
 				name: `${Parser.attAbvToFull(it)} Score`,
 				abv: it.toUpperCase(),
-				get: mon => mon[it]
+				get: mon => mon[it],
 			};
 		});
 		return out;
@@ -1770,7 +1596,7 @@ InitiativeTracker.STAT_COLUMNS = {
 			out[s.toCamelCase()] = {
 				name: s.toTitleCase(),
 				abv: Parser.skillToShort(s).toUpperCase(),
-				get: mon => mon.skill && mon.skill[s] ? mon.skill[s] : Parser.getAbilityModifier(mon[Parser.skillToAbilityAbv(s)])
+				get: mon => mon.skill && mon.skill[s] ? mon.skill[s] : Parser.getAbilityModifier(mon[Parser.skillToAbilityAbv(s)]),
 			};
 		});
 		return out;
@@ -1780,17 +1606,17 @@ InitiativeTracker.STAT_COLUMNS = {
 		name: "Checkbox; clears at start of turn",
 		isCb: true,
 		autoMode: -1,
-		get: () => false
+		get: () => false,
 	},
 	cbNeutral: {
 		name: "Checkbox",
 		isCb: true,
-		get: () => false
+		get: () => false,
 	},
 	cbAutoHigh: {
 		name: "Checkbox; ticks at start of turn",
 		isCb: true,
 		autoMode: 1,
-		get: () => true
-	}
+		get: () => true,
+	},
 };

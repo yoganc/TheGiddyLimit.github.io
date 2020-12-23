@@ -59,7 +59,7 @@ function cleanBestiaryFluffImages () {
 		"bestiary/VGM/Darkling.jpg": true,
 		"bestiary/VGM/Grung.jpg": true,
 		"bestiary/VGM/Neogi.jpg": true,
-		"bestiary/VGM/Shadow-Mastiff.jpg": true
+		"bestiary/VGM/Shadow-Mastiff.jpg": true,
 	};
 
 	// a value of "true" in the mapping represents "map directly"
@@ -81,7 +81,7 @@ function cleanBestiaryFluffImages () {
 		"bestiary/VGM/Vegepygmy.jpg": true,
 		"bestiary/PotA/Crushing-Wave-Cultists.jpg": true,
 		"bestiary/ToA/Albino Dwarf.jpg": true,
-		"bestiary/WDH/The-Gralhunds.jpg": true
+		"bestiary/WDH/The-Gralhunds.jpg": true,
 	};
 
 	const multipleNames = Object.entries(imageNameToCreatureName)
@@ -154,7 +154,7 @@ function cleanBestiaryFluffImages () {
 		.forEach(metas => metas.forEach(meta => meta.fluff.images.forEach(it => delete it._IS_RENAMED)));
 
 	// write JSON files
-	Object.values(ixFluff).forEach(meta => fs.writeFileSync(meta.path, ut.getCleanStringJson(meta.json), "utf-8"));
+	Object.values(ixFluff).forEach(meta => fs.writeFileSync(meta.path, CleanUtil.getCleanJson(meta.json), "utf-8"));
 
 	console.log(`Done!`);
 }

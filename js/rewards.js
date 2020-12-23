@@ -2,50 +2,33 @@
 
 class RewardsPage extends ListPage {
 	constructor () {
-		const sourceFilter = getSourceFilter();
-		const typeFilter = new Filter({
-			header: "Type",
-			items: [
-				"Blessing",
-				"Boon",
-				"Charm"
-			]
-		});
-
+		const pageFilter = new PageFilterRewards();
 		super({
 			dataSource: "data/rewards.json",
 
-			filters: [
-				sourceFilter,
-				typeFilter
-			],
-			filterSource: sourceFilter,
+			pageFilter,
 
 			listClass: "rewards",
 
 			sublistClass: "subrewards",
 
-			dataProps: ["reward"]
+			dataProps: ["reward"],
 		});
-
-		this._sourceFilter = sourceFilter;
-		this._typeFilter = typeFilter;
 	}
 
-	getListItem (reward, rwI) {
-		// populate filters
-		this._sourceFilter.addItem(reward.source);
-		this._typeFilter.addItem(reward.type);
+	getListItem (reward, rwI, isExcluded) {
+		this._pageFilter.mutateAndAddToFilters(reward, isExcluded);
 
 		const eleLi = document.createElement("li");
-		eleLi.className = "row";
+		eleLi.className = `row ${isExcluded ? "row--blacklisted" : ""}`;
 
 		const source = Parser.sourceJsonToAbv(reward.source);
 		const hash = UrlUtil.autoEncodeHash(reward);
 
-		eleLi.innerHTML = `<a href="#${hash}">
-			<span class="name col-10 pl-0">${reward.name}</span>
-			<span class="source col-2 text-center ${Parser.sourceJsonToColor(reward.source)} pr-0" title="${Parser.sourceJsonToFull(reward.source)}" ${BrewUtil.sourceJsonToStyle(reward.source)}>${source}</span>
+		eleLi.innerHTML = `<a href="#${hash}" class="lst--border">
+			<span class="col-2 text-center pl-0">${reward.type}</span>
+			<span class="bold col-8">${reward.name}</span>
+			<span class="col-2 text-center ${Parser.sourceJsonToColor(reward.source)} pr-0" title="${Parser.sourceJsonToFull(reward.source)}" ${BrewUtil.sourceJsonToStyle(reward.source)}>${source}</span>
 		</a>`;
 
 		const listItem = new ListItem(
@@ -55,8 +38,12 @@ class RewardsPage extends ListPage {
 			{
 				hash,
 				source,
-				uniqueid: reward.uniqueId ? reward.uniqueId : rwI
-			}
+				type: reward.type,
+			},
+			{
+				uniqueId: reward.uniqueId ? reward.uniqueId : rwI,
+				isExcluded,
+			},
 		);
 
 		eleLi.addEventListener("click", (evt) => this._list.doSelect(listItem, evt));
@@ -67,21 +54,19 @@ class RewardsPage extends ListPage {
 
 	handleFilterChange () {
 		const f = this._filterBox.getValues();
-		this._list.filter(item => {
-			const r = this._dataList[item.ix];
-			return this._filterBox.toDisplay(
-				f,
-				r.source,
-				r.type
-			);
-		});
+		this._list.filter(item => this._pageFilter.toDisplay(f, this._dataList[item.ix]));
 		FilterBox.selectFirstVisible(this._dataList);
 	}
 
 	getSublistItem (reward, pinId) {
 		const hash = UrlUtil.autoEncodeHash(reward);
 
-		const $ele = $(`<li class="row"><a href="#${hash}"><span class="name col-12 px-0">${reward.name}</span></a></li>`)
+		const $ele = $(`<li class="row">
+			<a href="#${hash}" class="lst--border">
+				<span class="name col-2 pl-0 text-center">${reward.type}</span>
+				<span class="name col-10 pr-0">${reward.name}</span>
+			</a>
+		</li>`)
 			.contextmenu(evt => ListUtil.openSubContextMenu(evt, listItem));
 
 		const listItem = new ListItem(
@@ -89,8 +74,9 @@ class RewardsPage extends ListPage {
 			$ele,
 			reward.name,
 			{
-				hash
-			}
+				hash,
+				type: reward.type,
+			},
 		);
 		return listItem;
 	}
@@ -104,9 +90,9 @@ class RewardsPage extends ListPage {
 		ListUtil.updateSelected();
 	}
 
-	doLoadSubHash (sub) {
+	async pDoLoadSubHash (sub) {
 		sub = this._filterBox.setFromSubHashes(sub);
-		ListUtil.setFromSubHashes(sub);
+		await ListUtil.pSetFromSubHashes(sub);
 	}
 }
 

@@ -2,27 +2,22 @@
 
 const JSON_URL = "data/books.json";
 
-window.onload = function load () {
+window.addEventListener("load", () => {
 	BookUtil.renderArea = $(`#pagecontent`);
-
-	BookUtil.renderArea.append(Renderer.utils.getBorderTr());
-	BookUtil.renderArea.append(`<tr><td colspan="6" class="initial-message book-loading-message">Loading...</td></tr>`);
-	BookUtil.renderArea.append(Renderer.utils.getBorderTr());
-
 	ExcludeUtil.pInitialise(); // don't await, as this is only used for search
-	Omnisearch.addScrollTopFloat();
 	DataUtil.loadJSON(JSON_URL).then(onJsonLoad);
-};
+});
 
 let books = [];
 let bkI = 0;
 function onJsonLoad (data) {
-	$("ul.contents").append($(`<li><a href='books.html'><span class='name'>\u21FD All Books</span></a></li>`));
+	$("ul.contents").append($(`<li><a href='books.html' class="lst--border"><span class='name'>\u21FD All Books</span></a></li>`));
 
 	BookUtil.baseDataUrl = "data/book/book-";
 	BookUtil.homebrewIndex = "book";
 	BookUtil.homebrewData = "bookData";
 	BookUtil.initLinkGrabbers();
+	BookUtil.initScrollTopFloat();
 
 	BookUtil.contentType = "book";
 
@@ -35,13 +30,13 @@ function onJsonLoad (data) {
 	BrewUtil.pAddBrewData()
 		.then(handleBrew)
 		.then(() => BrewUtil.pAddLocalBrewData())
-		.catch(BrewUtil.pPurgeBrew)
 		.then(() => {
 			if (window.location.hash.length) {
 				BookUtil.booksHashChange();
 			} else {
 				$(`.contents-item`).show();
 			}
+			window.dispatchEvent(new Event("toolsLoaded"));
 		});
 }
 
@@ -54,7 +49,7 @@ function handleBrew (homebrew) {
 function addBooks (data) {
 	if (!data.book || !data.book.length) return;
 
-	books = books.concat(data.book);
+	books.push(...data.book);
 	BookUtil.bookIndex = books;
 
 	const allContents = $("ul.contents");

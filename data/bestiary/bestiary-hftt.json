@@ -3,6 +3,7 @@
 		{
 			"name": "Demogorgon",
 			"source": "HftT",
+			"page": 36,
 			"size": "M",
 			"type": "monstrosity",
 			"alignment": [
@@ -78,6 +79,7 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Keen Senses",
 				"Regeneration"
@@ -99,6 +101,12 @@
 		{
 			"name": "Thessalhydra",
 			"source": "HftT",
+			"page": 41,
+			"otherSources": [
+				{
+					"source": "IMR"
+				}
+			],
 			"size": "H",
 			"type": "monstrosity",
 			"alignment": [
@@ -191,6 +199,7 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"senseTags": [
 				"D"
 			],
@@ -198,14 +207,17 @@
 				"Multiattack"
 			],
 			"damageTags": [
-				"P",
-				"I",
 				"A",
+				"I",
+				"P",
 				"S"
 			],
 			"miscTags": [
 				"MW",
 				"RCH"
+			],
+			"conditionInflict": [
+				"grappled"
 			]
 		}
 	]

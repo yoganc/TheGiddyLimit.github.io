@@ -1,6 +1,7 @@
 const ut = require("../node/util");
 const rl = require("readline-sync");
 const fs = require("fs");
+require("../js/utils");
 
 const BLACKLIST_FILE_PREFIXES = [
 	...ut.FILE_PREFIX_BLACKLIST,
@@ -14,7 +15,9 @@ const BLACKLIST_FILE_PREFIXES = [
 	"srd-monsters.json",
 	"roll20.json",
 	"spells-stream.json",
-	"makecards.json"
+	"makecards.json",
+	"foundry.json",
+	"characters.json",
 ];
 
 const BLACKLIST_KEYS = new Set([
@@ -29,15 +32,20 @@ const BLACKLIST_KEYS = new Set([
 	"adventure",
 	"book",
 	"itemTypeAdditionalEntries",
-	"legendaryGroup"
+	"legendaryGroup",
 ]);
 
 // Sources which only exist in digital form
 const BLACKLIST_SOURCES = new Set([
 	"DC",
 	"SLW",
-	"SDW"
+	"SDW",
 ]);
+
+const SUB_KEYS = {
+	class: ["subclasses"],
+	race: ["subraces"],
+};
 
 function run (isModificationMode) {
 	console.log(`##### Checking for Missing Page Numbers #####`);
@@ -56,13 +64,32 @@ function run (isModificationMode) {
 						const noPage = data
 							.filter(it => !BLACKLIST_SOURCES.has((it.inherits ? it.inherits.source : it.source) || it.source))
 							.filter(it => !(it.inherits ? it.inherits.page : it.page));
+
+						const subKeys = SUB_KEYS[k];
+						if (subKeys) {
+							subKeys.forEach(sk => {
+								data
+									.filter(it => it[sk] && it[sk] instanceof Array)
+									.forEach(it => {
+										const subArr = it[sk];
+										subArr
+											.forEach(subIt => subIt.source = subIt.source || it.source);
+										noPage.push(...subArr
+											// Skip un-named entries, as these are usually found on the page of their parent
+											.filter(subIt => subIt.name)
+											.filter(subIt => !BLACKLIST_SOURCES.has(subIt.source))
+											.filter(subIt => !subIt.page));
+									})
+							});
+						}
+
 						if (noPage.length) {
 							console.log(`${file}:`);
 							if (isModificationMode) console.log(`\t${noPage.length} missing page number${noPage.length === 1 ? "" : "s"}`);
 						}
 						noPage
 							.forEach(it => {
-								const ident = `${k} ${(it.source || (it.inherits && it.inherits.source))} ${it.name}`;
+								const ident = `${k.padEnd(20, " ")} ${(it.source || (it.inherits && it.inherits.source)).padEnd(32, " ")} ${it.name}`;
 								if (isModificationMode) {
 									console.log(`  ${ident}`);
 									const page = rl.questionInt("  - Page = ");
@@ -84,7 +111,7 @@ function run (isModificationMode) {
 					answer = rl.question(`Save file with ${mods} modification${mods === 1 ? "" : "s"}? [y/n/quit]`);
 					if (answer === "y") {
 						console.log(`Saving ${file}...`);
-						fs.writeFileSync(file, ut.getCleanStringJson(json), "utf-8");
+						fs.writeFileSync(file, CleanUtil.getCleanJson(json), "utf-8");
 					} else if (answer === "quit") {
 						process.exit(1);
 					}

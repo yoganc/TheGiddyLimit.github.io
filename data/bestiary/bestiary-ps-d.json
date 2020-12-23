@@ -8,9 +8,9 @@
 	},
 	"monster": [
 		{
+			"name": "Homarid",
 			"source": "PSD",
 			"page": 15,
-			"name": "Homarid",
 			"size": "M",
 			"type": "monstrosity",
 			"alignment": [
@@ -73,29 +73,33 @@
 					]
 				}
 			],
-			"languageTags": [
-				"OTH"
+			"hasToken": true,
+			"traitTags": [
+				"Amphibious"
 			],
 			"senseTags": [
 				"D"
 			],
-			"traitTags": [
-				"Amphibious"
-			],
 			"actionTags": [
 				"Multiattack"
+			],
+			"languageTags": [
+				"OTH"
 			],
 			"damageTags": [
 				"S"
 			],
 			"miscTags": [
 				"MW"
+			],
+			"conditionInflict": [
+				"grappled"
 			]
 		},
 		{
+			"name": "Kavu Predator",
 			"source": "PSD",
 			"page": 24,
-			"name": "Kavu Predator",
 			"size": "L",
 			"type": "beast",
 			"alignment": [
@@ -163,17 +167,18 @@
 					]
 				}
 			],
-			"languageTags": [
-				"E"
+			"hasToken": true,
+			"traitTags": [
+				"Pounce"
 			],
 			"senseTags": [
 				"D"
 			],
-			"traitTags": [
-				"Pounce"
-			],
 			"actionTags": [
 				"Multiattack"
+			],
+			"languageTags": [
+				"E"
 			],
 			"damageTags": [
 				"P",
@@ -181,12 +186,15 @@
 			],
 			"miscTags": [
 				"MW"
+			],
+			"conditionInflict": [
+				"prone"
 			]
 		},
 		{
+			"name": "Steel Leaf Kavu",
 			"source": "PSD",
 			"page": 24,
-			"name": "Steel Leaf Kavu",
 			"size": "L",
 			"type": "beast",
 			"alignment": [
@@ -246,11 +254,12 @@
 					]
 				}
 			],
-			"languageTags": [
-				"E"
-			],
+			"hasToken": true,
 			"senseTags": [
 				"D"
+			],
+			"languageTags": [
+				"E"
 			],
 			"damageTags": [
 				"P",
@@ -258,17 +267,20 @@
 			],
 			"miscTags": [
 				"MW"
+			],
+			"conditionInflict": [
+				"prone"
 			]
 		},
 		{
 			"name": "Zombie Horse",
 			"source": "PSD",
 			"page": 17,
-			"size": "L",
 			"_copy": {
 				"name": "Zombie",
 				"source": "MM"
-			}
+			},
+			"size": "L"
 		}
 	]
 }

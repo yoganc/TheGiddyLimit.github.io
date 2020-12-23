@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"version": "1.3.1",
+	"version": "1.4.2",
 	"definitions": {
 		"itemLookup": {
 			"type": "array",
@@ -25,6 +25,10 @@
 						"items": {
 							"$ref": "entry.json"
 						}
+					},
+					"template": {
+						"$comment": "Note that this is not used on item types.",
+						"type": "string"
 					}
 				},
 				"required": [
@@ -54,15 +58,15 @@
 						"type": "string",
 						"description": "\"None\" is for mundane items. \"Unknown (Magic)\" is for miscellaneous magical items. \"Unknown\" is for miscellaneous mundane items.",
 						"enum": [
-							"Rare",
-							"None",
-							"Uncommon",
-							"Very Rare",
-							"Legendary",
-							"Artifact",
-							"Unknown",
-							"Common",
-							"Unknown (Magic)"
+							"rare",
+							"none",
+							"uncommon",
+							"very rare",
+							"legendary",
+							"artifact",
+							"unknown",
+							"common",
+							"unknown (magic)"
 						]
 					},
 					"source": {
@@ -124,17 +128,42 @@
 					"sword": {
 						"type": "boolean"
 					},
+					"mace": {
+						"type": "boolean"
+					},
+					"spear": {
+						"type": "boolean"
+					},
+					"hammer": {
+						"type": "boolean"
+					},
+					"bow": {
+						"type": "boolean"
+					},
+					"crossbow": {
+						"type": "boolean"
+					},
+					"club": {
+						"type": "boolean"
+					},
+					"dagger": {
+						"type": "boolean"
+					},
+					"net": {
+						"type": "boolean"
+					},
 					"firearm": {
 						"type": "boolean"
 					},
 					"staff": {
+						"description": "Adds the italicized \"Staff\" text to the item info line (below the name).",
 						"type": "boolean"
 					},
 					"value": {
 						"description": "In copper pieces.",
 						"type": "number"
 					},
-					"valueConversion": {
+					"currencyConversion": {
 						"description": "ID of a value conversion table. Homebrew only.",
 						"type": "string"
 					},
@@ -155,6 +184,51 @@
 					},
 					"quantity": {
 						"type": "integer"
+					},
+					"srd": {
+						"$ref": "util.json#/definitions/srd"
+					},
+					"otherSources": {
+						"$ref": "util.json#/definitions/otherSources"
+					},
+					"ammoType": {
+						"type": "string"
+					},
+					"packContents": {
+						"type": "array",
+						"items": {
+							"oneOf": [
+								{
+									"type": "string"
+								},
+								{
+									"type": "object",
+									"properties": {
+										"special": {
+											"type": "string"
+										},
+										"quantity": {
+											"type": "integer"
+										}
+									},
+									"additionalProperties": false,
+									"required": ["special"]
+								},
+								{
+									"type": "object",
+									"properties": {
+										"item": {
+											"type": "string"
+										},
+										"quantity": {
+											"type": "integer"
+										}
+									},
+									"additionalProperties": false,
+									"required": ["item", "quantity"]
+								}
+							]
+						}
 					}
 				},
 				"required": [

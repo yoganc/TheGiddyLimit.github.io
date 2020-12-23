@@ -74,7 +74,7 @@ class CounterRoot extends CounterComponent {
 		const pod = super.getPod();
 		pod.swapRowPositions = this._swapRowPositions.bind(this);
 		pod.removeRow = this._removeRow.bind(this);
-		pod.childComponents = this._childComps;
+		pod.$getChildren = () => this._childComps.map(comp => comp.$row);
 		return pod;
 	}
 
@@ -94,7 +94,7 @@ class CounterRoot extends CounterComponent {
 	getSaveableState () {
 		return {
 			...this.getBaseSaveableState(),
-			rowState: this._childComps.map(r => r.getSaveableState())
+			rowState: this._childComps.map(r => r.getSaveableState()),
 		};
 	}
 }
@@ -148,7 +148,8 @@ class CounterRow extends CounterComponent {
 				${$btnDown}
 				${$btnUp}
 			</div>
-			${DragReorderUiUtil.$getDragPad2(this, $parent, this._parent)}
+
+			${DragReorderUiUtil.$getDragPad2(() => this._$row, $parent, this._parent)}
 			${$btnRemove}
 		</div>`.appendTo($parent);
 	}
@@ -158,5 +159,5 @@ class CounterRow extends CounterComponent {
 CounterRow._DEFAULT_STATE = {
 	name: "",
 	current: 0,
-	max: 1
+	max: 1,
 };

@@ -2,9 +2,16 @@
 	"monster": [
 		{
 			"name": "Avatar of Death",
+			"source": "DMG",
+			"page": 164,
+			"srd": true,
+			"otherSources": [
+				{
+					"source": "TCE"
+				}
+			],
 			"size": "M",
 			"type": "undead",
-			"source": "DMG",
 			"alignment": [
 				"N",
 				"E"
@@ -29,6 +36,11 @@
 			"int": 16,
 			"wis": 16,
 			"cha": 16,
+			"senses": [
+				"darkvision 60 ft.",
+				"truesight 60 ft."
+			],
+			"passive": 13,
 			"immune": [
 				"necrotic",
 				"poison"
@@ -41,11 +53,6 @@
 				"poisoned",
 				"unconscious"
 			],
-			"senses": [
-				"darkvision 60 ft.",
-				"truesight 60 ft."
-			],
-			"passive": 13,
 			"languages": [
 				"all languages known to its summoner"
 			],
@@ -71,29 +78,30 @@
 					]
 				}
 			],
-			"page": 164,
+			"hasToken": true,
 			"traitTags": [
 				"Incorporeal Movement",
 				"Turn Immunity"
-			],
-			"languageTags": [
-				"XX"
 			],
 			"senseTags": [
 				"D",
 				"U"
 			],
+			"languageTags": [
+				"XX"
+			],
 			"damageTags": [
-				"S",
 				"N",
-				"O"
+				"O",
+				"S"
 			]
 		},
 		{
 			"name": "Giant Fly",
+			"source": "DMG",
+			"page": 169,
 			"size": "L",
 			"type": "beast",
-			"source": "DMG",
 			"alignment": [
 				"U"
 			],
@@ -118,15 +126,20 @@
 				"darkvision 60 ft."
 			],
 			"passive": 10,
-			"cr": "0",
-			"page": 169,
+			"hasToken": true,
 			"senseTags": [
 				"D"
 			]
 		},
 		{
-			"source": "DMG",
 			"name": "Larva",
+			"source": "DMG",
+			"page": 63,
+			"otherSources": [
+				{
+					"source": "BGDIA"
+				}
+			],
 			"size": "M",
 			"type": "fiend",
 			"alignment": [
@@ -162,20 +175,16 @@
 					]
 				}
 			],
-			"page": 63,
+			"hasToken": true,
 			"languageTags": [
-				"CS"
+				"CS",
+				"LF"
 			],
 			"damageTags": [
 				"P"
 			],
 			"miscTags": [
 				"MW"
-			],
-			"otherSources": [
-				{
-					"source": "BGDIA"
-				}
 			]
 		}
 	]

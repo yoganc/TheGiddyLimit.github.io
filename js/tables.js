@@ -2,53 +2,35 @@
 
 class TablesPage extends ListPage {
 	constructor () {
-		const sourceFilter = getSourceFilter();
-
+		const pageFilter = new PageFilterTables();
 		super({
-			dataSource: async () => {
-				const datas = await Promise.all(["data/generated/gendata-tables.json", "data/tables.json"].map(url => DataUtil.loadJSON(url)));
-				const combined = {};
-				datas.forEach(data => {
-					Object.entries(data).forEach(([k, v]) => {
-						if (combined[k] && combined[k] instanceof Array && v instanceof Array) combined[k] = combined[k].concat(v);
-						else if (combined[k] == null) combined[k] = v;
-						else throw new Error(`Could not merge keys for key "${k}"`);
-					});
-				});
-				return combined;
-			},
+			dataSource: DataUtil.table.pLoadAll,
 
-			filters: [
-				sourceFilter
-			],
-			filterSource: sourceFilter,
+			pageFilter,
 
 			listClass: "tablesdata",
 			listOptions: {
-				sortByInitial: "sortName"
+				sortByInitial: "sortName",
 			},
 
 			sublistClass: "subtablesdata",
 
-			dataProps: ["table", "tableGroup"]
+			dataProps: ["table", "tableGroup"],
 		});
-
-		this._sourceFilter = sourceFilter;
 	}
 
-	getListItem (it, tbI) {
+	getListItem (it, tbI, isExcluded) {
+		this._pageFilter.mutateAndAddToFilters(it, isExcluded);
+
 		const sortName = it.name.replace(/^\s*([\d,.]+)\s*gp/, (...m) => m[1].replace(Parser._numberCleanRegexp, "").padStart(9, "0"));
 
-		// populate filters
-		this._sourceFilter.addItem(it.source);
-
 		const eleLi = document.createElement("li");
-		eleLi.className = "row";
+		eleLi.className = `row ${isExcluded ? "row--blacklisted" : ""}`;
 
 		const source = Parser.sourceJsonToAbv(it.source);
 		const hash = UrlUtil.autoEncodeHash(it);
 
-		eleLi.innerHTML = `<a href="#${hash}">
+		eleLi.innerHTML = `<a href="#${hash}" class="lst--border">
 			<span class="bold col-10 pl-0">${it.name}</span>
 			<span class="col-2 text-center ${Parser.sourceJsonToColor(it.source)} pr-0" title="${Parser.sourceJsonToFull(it.source)}" ${BrewUtil.sourceJsonToStyle(it.source)}>${source}</span>
 		</a>`;
@@ -61,8 +43,11 @@ class TablesPage extends ListPage {
 				hash,
 				sortName,
 				source,
-				uniqueid: it.uniqueId ? it.uniqueId : tbI
-			}
+			},
+			{
+				uniqueId: it.uniqueId ? it.uniqueId : tbI,
+				isExcluded,
+			},
 		);
 
 		eleLi.addEventListener("click", (evt) => this._list.doSelect(listItem, evt));
@@ -73,20 +58,14 @@ class TablesPage extends ListPage {
 
 	handleFilterChange () {
 		const f = this._filterBox.getValues();
-		this._list.filter(item => {
-			const it = this._dataList[item.ix];
-			return this._filterBox.toDisplay(
-				f,
-				it.source
-			);
-		});
+		this._list.filter(item => this._pageFilter.toDisplay(f, this._dataList[item.ix]));
 		FilterBox.selectFirstVisible(this._dataList);
 	}
 
 	getSublistItem (it, pinId) {
 		const hash = UrlUtil.autoEncodeHash(it);
 
-		const $ele = $(`<li class="row"><a href="#${hash}" title="${it.name}"><span class="bold col-12 px-0">${it.name}</span></a></li>`)
+		const $ele = $(`<li class="row"><a href="#${hash}" class="lst--border" title="${it.name}"><span class="bold col-12 px-0">${it.name}</span></a></li>`)
 			.contextmenu(evt => ListUtil.openSubContextMenu(evt, listItem));
 
 		const listItem = new ListItem(
@@ -94,8 +73,8 @@ class TablesPage extends ListPage {
 			$ele,
 			it.name,
 			{
-				hash
-			}
+				hash,
+			},
 		);
 		return listItem;
 	}
@@ -109,9 +88,9 @@ class TablesPage extends ListPage {
 		ListUtil.updateSelected();
 	}
 
-	doLoadSubHash (sub) {
+	async pDoLoadSubHash (sub) {
 		sub = this._filterBox.setFromSubHashes(sub);
-		ListUtil.setFromSubHashes(sub);
+		await ListUtil.pSetFromSubHashes(sub);
 	}
 }
 

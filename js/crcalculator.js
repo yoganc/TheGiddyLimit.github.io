@@ -5,15 +5,14 @@ const MONSTER_FEATURES_JSON_URL = "data/monsterfeatures.json";
 let msbcr;
 let monsterFeatures;
 
-window.onload = function load () {
+window.addEventListener("load", async () => {
 	ExcludeUtil.pInitialise(); // don't await, as this is only used for search
-	DataUtil.loadJSON(MONSTER_STATS_BY_CR_JSON_URL).then(addMSBCR);
-};
+	msbcr = await DataUtil.loadJSON(MONSTER_STATS_BY_CR_JSON_URL);
+	const mfData = await DataUtil.loadJSON(MONSTER_FEATURES_JSON_URL);
+	addMonsterFeatures(mfData);
 
-function addMSBCR (crData) {
-	msbcr = crData;
-	DataUtil.loadJSON(MONSTER_FEATURES_JSON_URL).then(addMonsterFeatures);
-}
+	window.dispatchEvent(new Event("toolsLoaded"));
+});
 
 function addMonsterFeatures (mfData) {
 	monsterFeatures = mfData.monsterfeatures;
@@ -282,7 +281,7 @@ function calculateCr () {
 				const $iptNum = $cb.siblings("input[type=number]");
 				return `${$cb.attr("id")}:${$iptNum.length ? $iptNum.val() : true}`
 			} else return false;
-		}).get().filter(Boolean).join(",")
+		}).get().filter(Boolean).join(","),
 	];
 	window.location = `#${hashParts.join(",")}`;
 
@@ -314,5 +313,5 @@ function calculateHp () {
 }
 
 function fractionStrToDecimal (str) {
-	return str === "0" ? 0 : parseFloat(str.split('/').reduce((numerator, denominator) => numerator / denominator));
+	return str === "0" ? 0 : parseFloat(str.split("/").reduce((numerator, denominator) => numerator / denominator));
 }

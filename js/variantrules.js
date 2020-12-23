@@ -2,43 +2,37 @@
 
 class VariantRulesPage extends ListPage {
 	constructor () {
-		const sourceFilter = getSourceFilter();
-
+		const pageFilter = new PageFilterVariantRules();
 		super({
 			dataSource: "data/variantrules.json",
 
-			filters: [
-				sourceFilter
-			],
-			filterSource: sourceFilter,
+			pageFilter,
 
 			listClass: "variantrules",
 
 			sublistClass: "subvariantrules",
 
-			dataProps: ["variantrule"]
+			dataProps: ["variantrule"],
 		});
-
-		this._sourceFilter = sourceFilter;
 	}
 
-	getListItem (rule, rlI) {
+	getListItem (rule, rlI, isExcluded) {
+		this._pageFilter.mutateAndAddToFilters(rule, isExcluded);
+
 		const searchStack = [];
 		for (const e1 of rule.entries) {
 			Renderer.getNames(searchStack, e1);
 		}
 
-		// populate filters
-		this._sourceFilter.addItem(rule.source);
-
 		const eleLi = document.createElement("li");
-		eleLi.className = "row";
+		eleLi.className = `row ${isExcluded ? "row--blacklisted" : ""}`;
 
 		const source = Parser.sourceJsonToAbv(rule.source);
 		const hash = UrlUtil.autoEncodeHash(rule);
 
-		eleLi.innerHTML = `<a href="#${hash}">
-			<span class="bold col-10 pl-0">${rule.name}</span>
+		eleLi.innerHTML = `<a href="#${hash}" class="lst--border">
+			<span class="bold col-7 pl-0">${rule.name}</span>
+			<span class="col-3 text-center">${rule.ruleType ? Parser.ruleTypeToFull(rule.ruleType) : "\u2014"}</span>
 			<span class="col-2 text-center ${Parser.sourceJsonToColor(rule.source)} pr-0" title="${Parser.sourceJsonToFull(rule.source)}" ${BrewUtil.sourceJsonToStyle(rule.source)}>${source}</span>
 		</a>`;
 
@@ -50,8 +44,12 @@ class VariantRulesPage extends ListPage {
 				hash,
 				search: searchStack.join(","),
 				source,
-				uniqueid: rule.uniqueId ? rule.uniqueId : rlI
-			}
+				ruleType: rule.ruleType || "",
+			},
+			{
+				uniqueId: rule.uniqueId ? rule.uniqueId : rlI,
+				isExcluded,
+			},
 		);
 
 		eleLi.addEventListener("click", (evt) => this._list.doSelect(listItem, evt));
@@ -62,20 +60,17 @@ class VariantRulesPage extends ListPage {
 
 	handleFilterChange () {
 		const f = this._filterBox.getValues();
-		this._list.filter((item) => {
-			const r = this._dataList[item.ix];
-			return this._filterBox.toDisplay(
-				f,
-				r.source
-			);
-		});
+		this._list.filter(item => this._pageFilter.toDisplay(f, this._dataList[item.ix]));
 		FilterBox.selectFirstVisible(this._dataList);
 	}
 
 	getSublistItem (it, pinId) {
 		const hash = UrlUtil.autoEncodeHash(it);
 
-		const $ele = $(`<li class="row"><a href="#${hash}" title="${it.name}"><span class="bold col-12 px-0">${it.name}</span></a></li>`)
+		const $ele = $(`<li class="row"><a href="#${hash}" class="lst--border">
+				<span class="bold col-10 pl-0">${it.name}</span>
+				<span class="col-3 text-center pr-0">${it.ruleType ? Parser.ruleTypeToFull(it.ruleType) : "\u2014"}</span>
+			</a></li>`)
 			.contextmenu(evt => ListUtil.openSubContextMenu(evt, listItem));
 
 		const listItem = new ListItem(
@@ -83,8 +78,9 @@ class VariantRulesPage extends ListPage {
 			$ele,
 			it.name,
 			{
-				hash
-			}
+				hash,
+				ruleType: it.ruleType || "",
+			},
 		);
 		return listItem;
 	}
@@ -94,16 +90,14 @@ class VariantRulesPage extends ListPage {
 
 		$("#pagecontent").empty().append(RenderVariantRules.$getRenderedVariantRule(rule));
 
-		loadSubHash([]);
-
 		ListUtil.updateSelected();
 	}
 
-	doLoadSubHash (sub) {
+	async pDoLoadSubHash (sub) {
 		if (!sub.length) return;
 
 		sub = this._filterBox.setFromSubHashes(sub);
-		ListUtil.setFromSubHashes(sub);
+		await ListUtil.pSetFromSubHashes(sub);
 
 		const $title = $(`.rd__h[data-title-index="${sub[0]}"]`);
 		if ($title.length) $title[0].scrollIntoView();

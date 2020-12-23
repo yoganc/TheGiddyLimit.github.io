@@ -17,7 +17,7 @@ class MoneyConverter {
 			new MoneyConverterUnit("Taol (WDH)", 200, "taol"),
 			new MoneyConverterUnit("Dragon (WDH)", 100, "dgn"),
 			new MoneyConverterUnit("Sun (WDH)", 1000, "sun"),
-			new MoneyConverterUnit("Harbor Moon (WDH)", 5000, "moon")
+			new MoneyConverterUnit("Harbor Moon (WDH)", 5000, "moon"),
 		];
 		const CURRENCY_INDEXED = [...CURRENCY].map((it, i) => {
 			it.ix = i;
@@ -43,8 +43,8 @@ class MoneyConverter {
 			}
 
 			const $rows = $wrpRows.find(`.dm_money__row`)
-				.removeClass("error-background");
-			$iptSplit.removeClass("error-background");
+				.removeClass("form-control--error");
+			$iptSplit.removeClass("form-control--error");
 
 			const outCurrency = Number($selOut.val()) || 0;
 
@@ -55,7 +55,7 @@ class MoneyConverter {
 			let split = 1;
 			if (splitBetweenStr) {
 				const splitBetweenNum = Number(splitBetweenStr);
-				if (isNaN(splitBetweenNum)) $iptSplit.addClass("error-background");
+				if (isNaN(splitBetweenNum)) $iptSplit.addClass("form-control--error");
 				else split = splitBetweenNum;
 			}
 
@@ -69,7 +69,7 @@ class MoneyConverter {
 					const strVal = ($e.find(`input`).val() || "").trim();
 					if (strVal) {
 						const asNum = Number(strVal);
-						if (isNaN(asNum)) $e.addClass("error-background");
+						if (isNaN(asNum)) $e.addClass("form-control--error");
 						else {
 							const ix = Number($e.find(`select`).val());
 							totals[ix] = (totals[ix] || 0) + asNum;
@@ -116,7 +116,7 @@ class MoneyConverter {
 					const strVal = ($e.find(`input`).val() || "").trim();
 					if (strVal) {
 						const asNum = Number(strVal);
-						if (isNaN(asNum)) $e.addClass("error-background");
+						if (isNaN(asNum)) $e.addClass("form-control--error");
 						else {
 							total += asNum * (CURRENCY[$e.find(`select`).val()] || CURRENCY[0]).mult;
 						}
@@ -173,7 +173,7 @@ class MoneyConverter {
 			.click(() => {
 				const {$modalInner} = UiUtil.getShowModal({
 					title: "Settings",
-					cbClose: () => doUpdate()
+					cbClose: () => doUpdate(),
 				});
 				[...CURRENCY_INDEXED].reverse().forEach(cx => {
 					UiUtil.$getAddModalRowCb($modalInner, `Disable ${cx.n} in Output`, disabledCurrency, cx.ix);
@@ -198,10 +198,10 @@ class MoneyConverter {
 					const $e = $(e);
 					return {
 						c: $e.find(`select`).val(),
-						n: $e.find(`input`).val()
+						n: $e.find(`input`).val(),
 					};
 				}).get(),
-				d: disabledCurrency
+				d: disabledCurrency,
 			};
 		});
 

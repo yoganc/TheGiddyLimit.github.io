@@ -1,3 +1,50 @@
+"use strict";
+
+class Prx {
+	static addHook (prop, hook) {
+		this.px._hooks[prop] = this.px._hooks[prop] || [];
+		this.px._hooks[prop].push(hook);
+	}
+
+	static addHookAll (hook) {
+		this.px._hooksAll.push(hook);
+	}
+
+	static toString () {
+		return JSON.stringify(this, (k, v) => k === "px" ? undefined : v);
+	}
+
+	static copy () {
+		return JSON.parse(Prx.toString.bind(this)());
+	}
+
+	static get (toProxy) {
+		toProxy.px = {
+			addHook: Prx.addHook.bind(toProxy),
+			addHookAll: Prx.addHookAll.bind(toProxy),
+			toString: Prx.toString.bind(toProxy),
+			copy: Prx.copy.bind(toProxy),
+			_hooksAll: [],
+			_hooks: {},
+		};
+
+		return new Proxy(toProxy, {
+			set: (object, prop, value) => {
+				object[prop] = value;
+				toProxy.px._hooksAll.forEach(hook => hook(prop, value));
+				if (toProxy.px._hooks[prop]) toProxy.px._hooks[prop].forEach(hook => hook(prop, value));
+				return true;
+			},
+			deleteProperty: (object, prop) => {
+				delete object[prop];
+				toProxy.px._hooksAll.forEach(hook => hook(prop, null));
+				if (toProxy.px._hooks[prop]) toProxy.px._hooks[prop].forEach(hook => hook(prop, null));
+				return true;
+			},
+		});
+	}
+}
+
 class ProxyBase {
 	constructor () {
 		this.__hooks = {};
@@ -9,17 +56,19 @@ class ProxyBase {
 	_getProxy (hookProp, toProxy) {
 		return new Proxy(toProxy, {
 			set: (object, prop, value) => {
+				if (object[prop] === value) return true;
 				object[prop] = value;
 				if (this.__hooksAll[hookProp]) this.__hooksAll[hookProp].forEach(hook => hook(prop, value));
 				if (this.__hooks[hookProp] && this.__hooks[hookProp][prop]) this.__hooks[hookProp][prop].forEach(hook => hook(prop, value));
 				return true;
 			},
 			deleteProperty: (object, prop) => {
+				if (!(prop in object)) return true;
 				delete object[prop];
 				if (this.__hooksAll[hookProp]) this.__hooksAll[hookProp].forEach(hook => hook(prop, null));
 				if (this.__hooks[hookProp] && this.__hooks[hookProp][prop]) this.__hooks[hookProp][prop].forEach(hook => hook(prop, null));
 				return true;
-			}
+			},
 		});
 	}
 
@@ -87,24 +136,43 @@ class ProxyBase {
 	_saveHookAllCopiesTo (obj) { this.__hooksAllTmp = obj; }
 
 	/**
-	 * Overwrite the current proxied object with some new values, then trigger all the appropriate event handlers.
-	 * @param hookProp Hook property.
+	 * Object.assign equivalent, overwrites values on the current proxied object with some new values,
+	 *   then trigger all the appropriate event handlers.
+	 * @param hookProp Hook property, e.g. "state".
 	 * @param proxyProp Proxied object property, e.g. "_state".
 	 * @param underProp Underlying object property, e.g. "__state".
 	 * @param toObj
+	 * @param isOverwrite If the overwrite should clean/delete all data from the object beforehand.
 	 */
-	_proxyAssign (hookProp, proxyProp, underProp, toObj) {
+	_proxyAssign (hookProp, proxyProp, underProp, toObj, isOverwrite) {
 		const oldKeys = Object.keys(this[proxyProp]);
-		const nuKeys = Object.keys(toObj);
-		const allKeys = new Set([...oldKeys, ...nuKeys]);
+		const nuKeys = new Set(Object.keys(toObj));
+		const dirtyKeys = new Set();
 
-		oldKeys.forEach(k => delete this[underProp][k]);
-		nuKeys.forEach(k => this[underProp][k] = toObj[k]);
+		if (isOverwrite) {
+			oldKeys.forEach(k => {
+				if (!nuKeys.has(k) && this[underProp] !== undefined) {
+					delete this[underProp][k];
+					dirtyKeys.add(k);
+				}
+			});
+		}
 
-		allKeys.forEach(k => {
+		nuKeys.forEach(k => {
+			if (!CollectionUtil.deepEquals(this[underProp][k], toObj[k])) {
+				this[underProp][k] = toObj[k];
+				dirtyKeys.add(k);
+			}
+		});
+
+		dirtyKeys.forEach(k => {
 			if (this.__hooksAll[hookProp]) this.__hooksAll[hookProp].forEach(hk => hk(k, this[underProp][k]));
 			if (this.__hooks[hookProp] && this.__hooks[hookProp][k]) this.__hooks[hookProp][k].forEach(hk => hk(k, this[underProp][k]));
 		});
+	}
+
+	_proxyAssignSimple (hookProp, toObj, isOverwrite) {
+		return this._proxyAssign(hookProp, `_${hookProp}`, `__${hookProp}`, toObj, isOverwrite);
 	}
 }
 
@@ -116,19 +184,27 @@ class UiUtil {
 	 * @param [opts.max] Max allowed return value.
 	 * @param [opts.min] Min allowed return value.
 	 * @param [opts.fallbackOnNaN] Return value if not a number.
-	 * @return {int}
 	 */
-	static strToInt (string, fallbackEmpty = 0, opts) {
+	static strToInt (string, fallbackEmpty = 0, opts) { return UiUtil._strToNumber(string, fallbackEmpty, opts, true) }
+
+	/**
+	 * @param string String to parse.
+	 * @param [fallbackEmpty] Fallback number if string is empty.
+	 * @param [opts] Options Object.
+	 * @param [opts.max] Max allowed return value.
+	 * @param [opts.min] Min allowed return value.
+	 * @param [opts.fallbackOnNaN] Return value if not a number.
+	 */
+	static strToNumber (string, fallbackEmpty = 0, opts) { return UiUtil._strToNumber(string, fallbackEmpty, opts, false) }
+
+	static _strToNumber (string, fallbackEmpty = 0, opts, isInt) {
 		opts = opts || {};
 		let out;
 		string = string.trim();
 		if (!string) out = fallbackEmpty;
 		else {
-			const preDot = string.split(".")[0].trim();
-			const unary = preDot.replace(/^([-+]*).*$/, (...m) => m[1]);
-			const numPart = preDot.replace(/[^0-9]/g, "");
-			const num = Number(`${unary}${numPart}` || 0);
-			out = isNaN(num)
+			const num = UiUtil._parseStrAsNumber(string, isInt);
+			out = isNaN(num) || !isFinite(num)
 				? opts.fallbackOnNaN !== undefined ? opts.fallbackOnNaN : 0
 				: num;
 		}
@@ -139,35 +215,23 @@ class UiUtil {
 
 	/**
 	 * @param string String to parse.
-	 * @param [fallbackEmpty] Fallback number if string is empty.
+	 * @param [fallbackEmpty] Fallback value if string is empty.
 	 * @param [opts] Options Object.
-	 * @param [opts.max] Max allowed return value.
-	 * @param [opts.min] Min allowed return value.
-	 * @param [opts.fallbackOnNaN] Return value if not a number.
-	 * @return {number}
+	 * @param [opts.fallbackOnNaB] Return value if not a boolean.
 	 */
-	static strToNumber (string, fallbackEmpty = 0, opts) {
+	static strToBool (string, fallbackEmpty = null, opts) {
 		opts = opts || {};
-		let out;
-		string = string.trim();
-		if (!string) out = fallbackEmpty;
-		else {
-			string = string.replace(/[^0-9,.]/gi, "").replace(Parser._numberCleanRegexp, "");
-			const num = Number(string);
-			out = isNaN(num)
-				? opts.fallbackOnNaN !== undefined ? opts.fallbackOnNaN : 0
-				: num;
-		}
-		if (opts.max != null) out = Math.min(out, opts.max);
-		if (opts.min != null) out = Math.max(out, opts.min);
-		return out;
+		if (!string) return fallbackEmpty;
+		string = string.trim().toLowerCase();
+		if (!string) return fallbackEmpty;
+		return string === "true" ? true : string === "false" ? false : opts.fallbackOnNaB;
 	}
 
 	static intToBonus (int) { return `${int >= 0 ? "+" : ""}${int}`; }
 
 	static getEntriesAsText (entryArray) {
 		if (!entryArray || !entryArray.length) return "";
-		return JSON.stringify(entryArray, null, 2)
+		const lines = JSON.stringify(entryArray, null, 2)
 			.replace(/^\s*\[/, "").replace(/]\s*$/, "")
 			.split("\n")
 			.filter(it => it.trim())
@@ -176,8 +240,19 @@ class UiUtil {
 				const mQuotes = /^"(.*?)",?$/.exec(trim);
 				if (mQuotes) return mQuotes[1]; // if string, strip quotes
 				else return `  ${trim}`; // if object, indent
-			})
-			.join("\n")
+			});
+
+		let out = "";
+		const len = lines.length;
+		for (let i = 0; i < len; ++i) {
+			out += lines[i];
+
+			if (i < len - 1) {
+				out += "\n";
+				if (!lines[i].startsWith("  ")) out += "\n";
+			}
+		}
+		return out;
 	}
 
 	static getTextAsEntries (text) {
@@ -194,119 +269,173 @@ class UiUtil {
 			const slice = lines.join(" \\ ").substring(0, 30);
 			JqueryUtil.doToast({
 				content: `Could not parse entries! Error was: ${e.message}<br>Text was: ${slice}${slice.length === 30 ? "..." : ""}`,
-				type: "danger"
+				type: "danger",
 			});
 			return lines;
 		}
 	}
 
-	static getSearchNoResults () {
-		return `<div class="ui-search__message"><i>No results.</i></div>`;
-	}
-
-	static getSearchLoading () {
-		return `<div class="ui-search__message"><i>\u2022\u2022\u2022</i></div>`;
-	}
-
-	static getSearchEnter () {
-		return `<div class="ui-search__message"><i>Enter a search.</i></div>`;
-	}
-
-	/**
-	 * @param $srch input element
-	 * @param opt should contain:
-	 *  `search` -- function which runs search
-	 *  `flags` -- object which contains:
-	 *    `isWait` -- flag tracking "waiting for user to stop typing"
-	 *    `doClickFirst` -- flag tracking "should first result get clicked"
-	 *  `showWait` -- function which displays loading dots
-	 */
-	static bindAutoSearch ($srch, opt) {
-		UiUtil.bindTypingEnd(
-			$srch,
-			() => {
-				opt.search();
-			},
-			(e) => {
-				if (e.which === 13) {
-					opt.flags.doClickFirst = true;
-					opt.search();
-				}
-			},
-			() => {
-				if (opt.flags.isWait) {
-					opt.flags.isWait = false;
-					opt.showWait();
-				}
-			},
-			() => {
-				if ($srch.val() && $srch.val().trim().length) opt.search();
-			}
-		);
-	}
-
-	static bindTypingEnd ($ipt, fnKeyup, fnKeypress, fnKeydown, fnClick) {
-		let typeTimer;
-		$ipt.on("keyup search", (e) => {
-			clearTimeout(typeTimer);
-			typeTimer = setTimeout(() => {
-				fnKeyup(e);
-			}, UiUtil.TYPE_TIMEOUT_MS);
-		});
-		$ipt.on("keypress", (e) => {
-			if (fnKeypress) fnKeypress(e);
-		});
-		$ipt.on("keydown", (e) => {
-			if (fnKeydown) fnKeydown(e);
-			clearTimeout(typeTimer);
-		});
-		$ipt.on("click", () => {
-			if (fnClick) fnClick();
-		});
-	}
-
 	/**
 	 * @param {Object} [opts] Options object.
 	 * @param {string} [opts.title] Modal title.
-	 * @param {boolean} [opts.fullHeight] If the modal should take up (almost) the full height of the screen.
-	 * @param {boolean} [opts.isLarge] If the modal should have (almost) unrestrained dimensions
-	 * @param {boolean} [opts.noMinHeight] If the modal should have no minimum height.
+	 *
+	 * @param {string} [opts.title] Modal title.
+	 *
+	 * @param [opts.isUncappedHeight] {boolean}
+	 * @param [opts.isUncappedWidth] {boolean}
+	 * @param [opts.isHeight100] {boolean}
+	 * @param [opts.isWidth100] {boolean}
+	 * @param [opts.isMinHeight0] {boolean}
+	 * @param [opts.isMaxWidth640p] {boolean}
+	 * @param [opts.isFullscreenModal] {boolean} An alternate mode.
+	 * @param [opts.isHeaderBorder] {boolean}
+	 *
 	 * @param {function} [opts.cbClose] Callback run when the modal is closed.
-	 * @param {JQuery} [opts.titleSplit] Element to have split alongside the title.
+	 * @param {JQuery} [opts.$titleSplit] Element to have split alongside the title.
 	 * @param {int} [opts.zIndex] Z-index of the modal.
 	 * @param {number} [opts.overlayColor] Overlay color.
 	 * @param {boolean} [opts.isPermanent] If the modal should be impossible to close.
+	 * @param {boolean} [opts.isIndestructible] If the modal elements should be detached, not removed.
+	 * @param {boolean} [opts.isClosed] If the modal should start off closed.
+	 * @param {boolean} [opts.isEmpty] If the modal should contain no content.
+	 * @param {boolean} [opts.hasFooter] If the modal has a footer.
 	 * @returns {object}
 	 */
 	static getShowModal (opts) {
 		opts = opts || {};
 
+		UiUtil._initModalEscapeHandler();
+		UiUtil._initModalMouseupHandlers();
+		$(document.activeElement).blur(); // blur any active element as it will be behind the modal
+
 		// if the user closed the modal by clicking the "cancel" background, isDataEntered is false
-		const handleCloseClick = async (isDataEntered, ...args) => {
+		const pHandleCloseClick = async (isDataEntered, ...args) => {
 			if (opts.cbClose) await opts.cbClose(isDataEntered, ...args);
-			$modal.remove();
+
+			if (opts.isIndestructible) $overlay.detach();
+			else $overlay.remove();
+
+			doTeardown();
 		};
 
-		const $modal = $(`<div class="ui-modal__overlay">`);
-		if (opts.zIndex != null) $modal.css({zIndex: opts.zIndex});
-		if (opts.overlayColor != null) $modal.css({backgroundColor: opts.overlayColor});
-		const $scroller = $(`<div class="ui-modal__scroller"/>`);
-		const $modalInner = $$`<div class="ui-modal__inner ui-modal__inner--modal dropdown-menu ${opts.isLarge ? `ui-modal__inner--large ` : ""}${opts.fullHeight ? "h-100" : ""}"><div class="split flex-v-center no-shrink">${opts.title ? `<h4>${opts.title.escapeQuotes()}</h4>` : ""}${opts.titleSplit || ""}</div>${$scroller}</div>`
-			.appendTo($modal);
-		if (opts.noMinHeight) $modalInner.css("height", "initial");
+		const doTeardown = () => {
+			UiUtil._popFromModalStack(modalStackMeta);
+			if (!UiUtil._MODAL_STACK.length) document.body.classList.remove(`ui-modal__body-active`);
+		};
 
-		$modal.click(evt => {
-			if (evt.target === $modal[0]) {
+		const doOpen = () => {
+			$overlay.appendTo(document.body);
+			document.body.classList.add(`ui-modal__body-active`);
+		};
+
+		const $overlay = $(`<div class="ui-modal__overlay">`);
+		if (opts.zIndex != null) $overlay.css({zIndex: opts.zIndex});
+		if (opts.overlayColor != null) $overlay.css({backgroundColor: opts.overlayColor});
+
+		// In "fullscreen" mode, blank out the modal background
+		const $overlayBlind = opts.isFullscreenModal
+			? $(`<div class="ui-modal__overlay-blind w-100 h-100 flex-col"></div>`).appendTo($overlay)
+			: null;
+
+		const $scroller = $(`<div class="ui-modal__scroller flex-col"></div>`);
+
+		const modalWindowClasses = [
+			opts.isWidth100 ? `w-100` : "",
+			opts.isHeight100 ? "h-100" : "",
+			opts.isUncappedHeight ? "ui-modal__inner--uncap-height" : "",
+			opts.isUncappedWidth ? "ui-modal__inner--uncap-width" : "",
+			opts.isMinHeight0 ? `ui-modal__inner--no-min-height` : "",
+			opts.isMaxWidth640p ? `ui-modal__inner--max-width-640p` : "",
+			opts.isFullscreenModal ? `ui-modal__inner--mode-fullscreen my-0 pt-0` : "",
+			opts.hasFooter ? `pb-0` : "",
+		].filter(Boolean);
+
+		const $btnCloseModal = opts.isFullscreenModal
+			? $(`<button class="btn btn-danger btn-xs"><span class="glyphicon glyphicon-remove"></span></button>`)
+				.click(() => pHandleCloseClick(false))
+			: null;
+
+		const $modalFooter = opts.hasFooter ? $(`<div class="no-shrink w-100 flex-col ui-modal__footer ${opts.isFullscreenModal ? `ui-modal__footer--fullscreen mt-1` : ""}"></div>`) : null;
+
+		const $modal = $$`<div class="ui-modal__inner flex-col dropdown-menu ${modalWindowClasses.join(" ")}">
+			${!opts.isEmpty && opts.title ? $$`<div class="split-v-center no-shrink ${opts.isHeaderBorder ? `ui-modal__header--border` : ""} ${opts.isFullscreenModal ? `ui-modal__header--fullscreen mb-1` : ""}">
+				${opts.title ? `<h4 class="my-2">${opts.title.escapeQuotes()}</h4>` : ""}${opts.$titleSplit || ""}${$btnCloseModal}
+			</div>` : null}
+
+			${!opts.isEmpty ? $scroller : null}
+
+			${$modalFooter}
+		</div>`
+			.appendTo(opts.isFullscreenModal ? $overlayBlind : $overlay);
+
+		$overlay
+			.mouseup(evt => {
+				if (evt.target !== $overlay[0]) return;
+				if (evt.target !== UiUtil._MODAL_LAST_MOUSEDOWN) return;
 				if (opts.isPermanent) return;
-				handleCloseClick(false);
-			}
-		});
+				evt.stopPropagation();
+				evt.preventDefault();
+				return pHandleCloseClick(false);
+			});
 
-		$(`body`).append($modal);
-		return {
-			$modalInner: $scroller,
-			doClose: handleCloseClick
+		if (!opts.isClosed) doOpen();
+
+		const modalStackMeta = {
+			isPermanent: opts.isPermanent,
+			pHandleCloseClick,
+			doTeardown,
 		};
+		if (!opts.isClosed) UiUtil._pushToModalStack(modalStackMeta);
+
+		const out = {
+			$modal,
+			$modalInner: $scroller,
+			$modalFooter,
+			doClose: pHandleCloseClick,
+			doTeardown,
+		};
+
+		if (opts.isIndestructible || opts.isClosed) {
+			out.doOpen = () => {
+				UiUtil._pushToModalStack(modalStackMeta);
+				doOpen();
+			};
+		}
+
+		return out;
+	}
+
+	static _pushToModalStack (modalStackMeta) {
+		if (!UiUtil._MODAL_STACK.includes(modalStackMeta)) {
+			UiUtil._MODAL_STACK.push(modalStackMeta);
+		}
+	}
+
+	static _popFromModalStack (modalStackMeta) {
+		const ixStack = UiUtil._MODAL_STACK.indexOf(modalStackMeta);
+		if (~ixStack) UiUtil._MODAL_STACK.splice(ixStack, 1);
+	}
+
+	static _initModalEscapeHandler () {
+		if (UiUtil._MODAL_STACK) return;
+		UiUtil._MODAL_STACK = [];
+
+		document.addEventListener("keydown", evt => {
+			if (evt.which !== 27) return;
+			if (!UiUtil._MODAL_STACK.length) return;
+			if (EventUtil.isInInput(evt)) return;
+
+			const outerModalMeta = UiUtil._MODAL_STACK.last();
+			if (!outerModalMeta) return;
+			evt.stopPropagation();
+			if (!outerModalMeta.isPermanent) return outerModalMeta.pHandleCloseClick(false);
+		});
+	}
+
+	static _initModalMouseupHandlers () {
+		document.addEventListener("mousedown", evt => {
+			UiUtil._MODAL_LAST_MOUSEDOWN = evt.target;
+		});
 	}
 
 	static addModalSep ($modalInner) {
@@ -314,7 +443,7 @@ class UiUtil {
 	}
 
 	static $getAddModalRow ($modalInner, tag = "div") {
-		return $(`<${tag} class="ui-modal__row"/>`).appendTo($modalInner);
+		return $(`<${tag} class="ui-modal__row"></${tag}>`).appendTo($modalInner);
 	}
 
 	/**
@@ -329,15 +458,18 @@ class UiUtil {
 		const $row = UiUtil.$getAddModalRow($modalInner, "h5").addClass("bold");
 		if (opts.$eleRhs) $$`<div class="split flex-v-center w-100 pr-1"><span>${headerText}</span>${opts.$eleRhs}</div>`.appendTo($row);
 		else $row.text(headerText);
-		if (opts.helpText) $row.attr("title", opts.helpText);
+		if (opts.helpText) $row.title(opts.helpText);
 		return $row;
 	}
 
 	static $getAddModalRowCb ($modalInner, labelText, objectWithProp, propName, helpText) {
 		const $row = UiUtil.$getAddModalRow($modalInner, "label").addClass(`ui-modal__row--cb`);
-		if (helpText) $row.attr("title", helpText);
+		if (helpText) $row.title(helpText);
 		$row.append(`<span>${labelText}</span>`);
 		const $cb = $(`<input type="checkbox">`).appendTo($row)
+			.keydown(evt => {
+				if (evt.key === "Escape") $cb.blur();
+			})
 			.prop("checked", objectWithProp[propName])
 			.on("change", () => objectWithProp[propName] = $cb.prop("checked"));
 		return $cb;
@@ -357,19 +489,193 @@ class UiUtil {
 	static $getAddModalRowSel ($modalInner, labelText, objectWithProp, propName, values, opts) {
 		opts = opts || {};
 		const $row = UiUtil.$getAddModalRow($modalInner, "label").addClass(`ui-modal__row--sel`);
-		if (opts.helpText) $row.attr("title", opts.helpText);
+		if (opts.helpText) $row.title(opts.helpText);
 		$row.append(`<span>${labelText}</span>`);
 		const $sel = $(`<select class="form-control input-xs w-30">`).appendTo($row);
-		values.forEach((val, i) => $(`<option value="${i}"/>`).text(opts.fnDisplay ? opts.fnDisplay(val) : val).appendTo($sel));
+		values.forEach((val, i) => $(`<option value="${i}"></option>`).text(opts.fnDisplay ? opts.fnDisplay(val) : val).appendTo($sel));
 		// N.B. this doesn't support null values
 		const ix = values.indexOf(objectWithProp[propName]);
 		$sel.val(`${~ix ? ix : 0}`)
 			.change(() => objectWithProp[propName] = values[$sel.val()]);
 		return $sel;
 	}
+
+	static _parseStrAsNumber (str, isInt) {
+		const wrpTree = Renderer.dice.lang.getTree3(str);
+		if (!wrpTree) return NaN;
+		const out = wrpTree.tree.evl({});
+		if (!isNaN(out) && isInt) return Math.round(out);
+		return out;
+	}
+
+	static bindTypingEnd ({$ipt, fnKeyup, fnKeypress, fnKeydown, fnClick} = {}) {
+		let timerTyping;
+		$ipt
+			.on("keyup search paste", evt => {
+				clearTimeout(timerTyping);
+				timerTyping = setTimeout(() => { fnKeyup(evt); }, UiUtil.TYPE_TIMEOUT_MS);
+			})
+			.on("keypress", (e) => {
+				if (fnKeypress) fnKeypress(e);
+			})
+			.on("keydown", evt => {
+				if (fnKeydown) fnKeydown(evt);
+				clearTimeout(timerTyping);
+			})
+			.on("click", () => {
+				if (fnClick) fnClick();
+			});
+	}
 }
 UiUtil.SEARCH_RESULTS_CAP = 75;
 UiUtil.TYPE_TIMEOUT_MS = 100; // auto-search after 100ms
+UiUtil._MODAL_STACK = null;
+UiUtil._MODAL_LAST_MOUSEDOWN = null;
+
+class ListUiUtil {
+	/**
+	 * (Public method for Plutonium use)
+	 * Handle doing a checkbox-based selection toggle on a list.
+	 * @param list
+	 * @param item List item. Must have a "data" property with a "cbSel" (the checkbox).
+	 * @param evt Click event.
+	 * @param [opts] Options object.
+	 * @param [opts.isNoHighlightSelection] If highlighting selected rows should be skipped.
+	 * @param [opts.fnOnSelectionChange] Function to call when selection status of an item changes.
+	 * @param [opts.fnGetCb] Function which gets the checkbox from a list item.
+	 */
+	static handleSelectClick (list, item, evt, opts) {
+		opts = opts || {};
+		evt.preventDefault();
+		evt.stopPropagation();
+
+		if (evt && evt.shiftKey && list.__firstListSelection) {
+			if (list.__lastListSelection === item) {
+				// on double-tapping the end of the selection, toggle it on/off
+
+				const cb = this._getCb(item, opts);
+				this._updateCb(item, opts, !cb.checked);
+			} else if (list.__firstListSelection === item && list.__lastListSelection) {
+				// If the item matches the last clicked, clear all checkboxes from our last selection
+
+				const ix1 = list.visibleItems.indexOf(list.__firstListSelection);
+				const ix2 = list.visibleItems.indexOf(list.__lastListSelection);
+
+				const [ixStart, ixEnd] = [ix1, ix2].sort(SortUtil.ascSort);
+				for (let i = ixStart; i <= ixEnd; ++i) {
+					const it = list.visibleItems[i];
+					this._updateCb(it, opts, false);
+				}
+
+				this._updateCb(item, opts);
+			} else {
+				// on a shift-click, toggle all the checkboxes to true...
+
+				const ix1 = list.visibleItems.indexOf(list.__firstListSelection);
+				const ix2 = list.visibleItems.indexOf(item);
+				const ix2Prev = list.__lastListSelection ? list.visibleItems.indexOf(list.__lastListSelection) : null;
+
+				const [ixStart, ixEnd] = [ix1, ix2].sort(SortUtil.ascSort);
+				for (let i = ixStart; i <= ixEnd; ++i) {
+					const it = list.visibleItems[i];
+					this._updateCb(it, opts);
+				}
+
+				// ...except those between the last selection and this selection, set those to false
+				if (ix2Prev != null) {
+					if (ix2Prev > ixEnd) {
+						for (let i = ixEnd + 1; i <= ix2Prev; ++i) {
+							const it = list.visibleItems[i];
+							this._updateCb(it, opts, false);
+						}
+					} else if (ix2Prev < ixStart) {
+						for (let i = ix2Prev; i < ixStart; ++i) {
+							const it = list.visibleItems[i];
+							this._updateCb(it, opts, false);
+						}
+					}
+				}
+			}
+
+			list.__lastListSelection = item;
+		} else {
+			// on a normal click, or if there's been no initial selection, just toggle the checkbox
+
+			const cbMaster = this._getCb(item, opts);
+			if (cbMaster) {
+				cbMaster.checked = !cbMaster.checked;
+
+				if (opts.fnOnSelectionChange) opts.fnOnSelectionChange(item, cbMaster.checked);
+
+				if (!opts.isNoHighlightSelection) {
+					if (cbMaster.checked) item.ele instanceof $ ? item.ele.addClass("list-multi-selected") : item.ele.classList.add("list-multi-selected");
+					else item.ele instanceof $ ? item.ele.removeClass("list-multi-selected") : item.ele.classList.remove("list-multi-selected");
+				}
+			} else {
+				if (!opts.isNoHighlightSelection) {
+					item.ele instanceof $ ? item.ele.removeClass("list-multi-selected") : item.ele.classList.remove("list-multi-selected");
+				}
+			}
+
+			list.__firstListSelection = item;
+			list.__lastListSelection = null;
+		}
+	}
+
+	/**
+	 * Handle doing a radio-based selection toggle on a list.
+	 * @param list
+	 * @param item List item. Must have a "data" property with a "cbSel" (the radio input).
+	 * @param evt Click event.
+	 */
+	static handleSelectClickRadio (list, item, evt) {
+		evt.preventDefault();
+		evt.stopPropagation();
+
+		list.items.forEach(it => {
+			if (it === item) {
+				// Setting this to true *should* cause the browser to update the rest for us, but since list items can
+				//   be filtered/hidden, the browser won't necessarily update them all. Therefore, forcibly set
+				//   `checked = false` below.
+				it.data.cbSel.checked = true;
+				it.ele.classList.add("list-multi-selected");
+			} else {
+				it.data.cbSel.checked = false;
+				it.ele.classList.remove("list-multi-selected");
+			}
+		})
+	}
+
+	static _getCb (item, opts) { return opts.fnGetCb ? opts.fnGetCb(item) : item.data.cbSel; }
+
+	static _updateCb (item, opts, toVal = true) {
+		const cbSlave = this._getCb(item, opts);
+		if (cbSlave) {
+			cbSlave.checked = toVal;
+			if (opts.fnOnSelectionChange) opts.fnOnSelectionChange(item, toVal);
+		}
+
+		if (!opts.isNoHighlightSelection) {
+			if (toVal) item.ele instanceof $ ? item.ele.addClass("list-multi-selected") : item.ele.classList.add("list-multi-selected");
+			else item.ele instanceof $ ? item.ele.removeClass("list-multi-selected") : item.ele.classList.remove("list-multi-selected");
+		}
+	}
+
+	/**
+	 * (Public method for Plutonium use)
+	 */
+	static bindSelectAllCheckbox ($cbAll, list) {
+		$cbAll.change(() => {
+			const isChecked = $cbAll.prop("checked");
+			list.visibleItems.forEach(item => {
+				if (item.data.cbSel) item.data.cbSel.checked = isChecked;
+
+				if (isChecked) item.ele instanceof $ ? item.ele.addClass("list-multi-selected") : item.ele.classList.add("list-multi-selected");
+				else item.ele instanceof $ ? item.ele.removeClass("list-multi-selected") : item.ele.classList.remove("list-multi-selected");
+			});
+		});
+	}
+}
 
 class ProfUiUtil {
 	/**
@@ -389,50 +695,50 @@ class ProfUiUtil {
 		if (state >= NUM_STATES) state = NUM_STATES - 1;
 		else if (state < 0) state = 0;
 
-		const $btnCycle = $(`<button class="ui-prof__btn-cycle"/>`)
+		const $btnCycle = $(`<button class="ui-prof__btn-cycle"></button>`)
 			.click(() => {
 				$btnCycle
 					.attr("data-state", ++state >= NUM_STATES ? state = 0 : state)
-					.attr("title", ProfUiUtil.PROF_TO_FULL[state].name)
+					.title(ProfUiUtil.PROF_TO_FULL[state].name)
 					.trigger("change");
 			})
 			.contextmenu(evt => {
 				evt.preventDefault();
 				$btnCycle
 					.attr("data-state", --state < 0 ? state = NUM_STATES - 1 : state)
-					.attr("title", ProfUiUtil.PROF_TO_FULL[state].name)
+					.title(ProfUiUtil.PROF_TO_FULL[state].name)
 					.trigger("change");
 			});
 		const setState = (nuState) => {
 			state = nuState;
 			if (state > NUM_STATES) state = 0;
 			else if (state < 0) state = NUM_STATES - 1;
-			$btnCycle.attr("data-state", state);
+			$btnCycle.attr("data-state", state).title(ProfUiUtil.PROF_TO_FULL[state].name);
 		};
 		return {
 			$ele: $btnCycle,
 			setState,
-			getState: () => state
+			getState: () => state,
 		}
 	}
 }
 ProfUiUtil.PROF_TO_FULL = {
 	"0": {
 		name: "No proficiency",
-		mult: 0
+		mult: 0,
 	},
 	"1": {
 		name: "Proficiency",
-		mult: 1
+		mult: 1,
 	},
 	"2": {
 		name: "Expertise",
-		mult: 2
+		mult: 2,
 	},
 	"3": {
 		name: "Half proficiency",
-		mult: 0.5
-	}
+		mult: 0.5,
+	},
 };
 
 class TabUiUtil {
@@ -446,6 +752,7 @@ class TabUiUtil {
 		 * @param opts.tabGroup User-defined string identifying which group of tabs this belongs to.
 		 * @param opts.stateObj The state object in which this tab should track/set its active status. Usually a proxy.
 		 * @param [opts.hasBorder] True if the tab should compensate for having a top border; i.e. pad itself.
+		 * @param [opts.hasBackground] True if the tab should have a flat-color background.
 		 * @param [opts.cbTabChange] Callback function to call on tab change.
 		 */
 		obj._getTab = function (ix, name, opts) {
@@ -459,19 +766,19 @@ class TabUiUtil {
 
 			const isActive = opts.stateObj[activeProp] === ix;
 
-			const $btnTab = $(`<button class="btn btn-default stat-tab ${isActive ? "stat-tab-sel" : ""}">${name}</button>`)
+			const $btnTab = $(`<button class="btn btn-default ui-tab__btn-tab-head ${isActive ? "ui-tab__btn-tab-head--active" : ""}">${name}</button>`)
 				.click(() => {
 					const prevTab = tabMeta[opts.stateObj[activeProp]];
-					prevTab.$btnTab.removeClass("stat-tab-sel");
-					prevTab.$wrpTab.hide();
+					prevTab.$btnTab.removeClass("ui-tab__btn-tab-head--active");
+					prevTab.$wrpTab.toggleClass("ve-hidden", true);
 
 					opts.stateObj[activeProp] = ix;
-					$btnTab.addClass("stat-tab-sel");
-					$wrpTab.show();
+					$btnTab.addClass("ui-tab__btn-tab-head--active");
+					$wrpTab.toggleClass("ve-hidden", false);
 					if (opts.cbTabChange) opts.cbTabChange();
 				});
 
-			const $wrpTab = $(`<div class="ui-tab__wrp-tab-body ${opts.hasBorder ? "ui-tab__wrp-tab-body--border" : ""}" ${isActive ? `style="display: block;"` : ""}/>`);
+			const $wrpTab = $(`<div class="ui-tab__wrp-tab-body ${isActive ? "" : "ve-hidden"} ${opts.hasBorder ? "ui-tab__wrp-tab-body--border" : ""} ${opts.hasBackground ? "ui-tab__wrp-tab-body--background" : ""}"></div>`);
 
 			const out = {ix, $btnTab, $wrpTab};
 			tabMeta[ix] = out;
@@ -535,18 +842,22 @@ class SearchUiUtil {
 		// Add main site index
 		let ixMax = 0;
 
-		const handleDataItem = (d, isAlternate) => {
-			if (SearchUiUtil._isNoHoverCat(d.c) || fromDeepIndex(d)) return;
-			d.cf = d.c === Parser.CAT_ID_CREATURE ? "Creature" : Parser.pageCategoryToFull(d.c);
-			if (isAlternate) d.cf = `alt_${d.cf}`;
-			if (!availContent[d.cf]) {
-				availContent[d.cf] = elasticlunr(function () {
+		const initIndexForFullCat = (doc) => {
+			if (!availContent[doc.cf]) {
+				availContent[doc.cf] = elasticlunr(function () {
 					this.addField("n");
 					this.addField("s");
 					this.setRef("id");
 				});
-				SearchUtil.removeStemmer(availContent[d.cf]);
+				SearchUtil.removeStemmer(availContent[doc.cf]);
 			}
+		};
+
+		const handleDataItem = (d, isAlternate) => {
+			if (SearchUiUtil._isNoHoverCat(d.c) || fromDeepIndex(d)) return;
+			d.cf = d.c === Parser.CAT_ID_CREATURE ? "Creature" : Parser.pageCategoryToFull(d.c);
+			if (isAlternate) d.cf = `alt_${d.cf}`;
+			initIndexForFullCat(d);
 			if (!isAlternate) availContent.ALL.addDoc(d);
 			availContent[d.cf].addDoc(d);
 			ixMax = Math.max(ixMax, d.id);
@@ -565,6 +876,7 @@ class SearchUiUtil {
 			if (SearchUiUtil._isNoHoverCat(d.c) || fromDeepIndex(d)) return;
 			d.cf = Parser.pageCategoryToFull(d.c);
 			d.cf = d.c === Parser.CAT_ID_CREATURE ? "Creature" : Parser.pageCategoryToFull(d.c);
+			initIndexForFullCat(d);
 			availContent.ALL.addDoc(d);
 			availContent[d.cf].addDoc(d);
 		});
@@ -574,20 +886,121 @@ class SearchUiUtil {
 }
 SearchUiUtil.NO_HOVER_CATEGORIES = new Set([
 	Parser.CAT_ID_ADVENTURE,
-	Parser.CAT_ID_CLASS,
-	Parser.CAT_ID_QUICKREF
+	Parser.CAT_ID_BOOK,
+	Parser.CAT_ID_QUICKREF,
+	Parser.CAT_ID_PAGE,
+	Parser.CAT_ID_LEGENDARY_GROUP,
 ]);
 
 // based on DM screen's AddMenuSearchTab
 class SearchWidget {
+	static getSearchNoResults () {
+		return `<div class="ui-search__message"><i>No results.</i></div>`;
+	}
+
+	static getSearchLoading () {
+		return `<div class="ui-search__message"><i>\u2022\u2022\u2022</i></div>`;
+	}
+
+	static getSearchEnter () {
+		return `<div class="ui-search__message"><i>Enter a search.</i></div>`;
+	}
+
+	/**
+	 * @param $iptSearch input element
+	 * @param opts Options object.
+	 * @param opts.fnSearch Function which runs the search.
+	 * @param opts.fnShowWait Function which displays loading dots
+	 * @param opts.flags Flags object; modified during user interaction.
+	 * @param opts.flags.isWait Flag tracking "waiting for user to stop typing"
+	 * @param opts.flags.doClickFirst Flag tracking "should first result get clicked"
+	 * @param opts.flags.doClickFirst Flag tracking "should first result get clicked"
+	 * @param opts.$ptrRows Pointer to array of rows.
+	 */
+	static bindAutoSearch ($iptSearch, opts) {
+		UiUtil.bindTypingEnd({
+			$ipt: $iptSearch,
+			fnKeyup: () => {
+				opts.fnSearch && opts.fnSearch();
+			},
+			fnKeypress: evt => {
+				if (evt.which === 13) {
+					opts.flags.doClickFirst = true;
+					opts.fnSearch && opts.fnSearch();
+				}
+			},
+			fnKeydown: evt => {
+				if (opts.flags.isWait) {
+					opts.flags.isWait = false;
+					opts.fnShowWait && opts.fnShowWait();
+				} else {
+					switch (evt.which) {
+						case 40: { // down
+							if (opts.$ptrRows && opts.$ptrRows._[0]) {
+								evt.preventDefault();
+								opts.$ptrRows._[0].focus();
+							}
+							break;
+						}
+						case 13: { // enter
+							if (opts.$ptrRows && opts.$ptrRows._[0]) {
+								evt.preventDefault();
+								opts.$ptrRows._[0].click();
+							}
+							break;
+						}
+					}
+				}
+			},
+			fnClick: () => {
+				if (opts.fnSearch && $iptSearch.val() && $iptSearch.val().trim().length) opts.fnSearch();
+			},
+		});
+	}
+
+	static bindRowHandlers ({result, $row, $ptrRows, fnHandleClick}) {
+		return $row
+			.keydown(evt => {
+				switch (evt.which) {
+					case 13: { // enter
+						return fnHandleClick(result);
+					}
+					case 38: { // up
+						evt.preventDefault();
+						const ixRow = $ptrRows._.indexOf($row);
+						const $prev = $ptrRows._[ixRow - 1];
+						if ($prev) $prev.focus();
+						else $ptrRows.focus();
+						break;
+					}
+					case 40: { // down
+						evt.preventDefault();
+						const ixRow = $ptrRows._.indexOf($row);
+						const $nxt = $ptrRows._[ixRow + 1];
+						if ($nxt) $nxt.focus();
+						break;
+					}
+				}
+			})
+			.click(() => fnHandleClick(result));
+	}
+
+	static docToPageSourceHash (doc) {
+		const page = UrlUtil.categoryToHoverPage(doc.c);
+		const source = doc.s;
+		const hash = doc.u;
+
+		return {page, source, hash};
+	}
+
 	/**
 	 * @param indexes An object with index names (categories) as the keys, and indexes as the values.
 	 * @param cbSearch Callback to run on user clicking a search result.
 	 * @param options Options object.
 	 * @param options.defaultCategory Default search category.
-	 * @param options.resultFilter Function which takes a document and returns false if it is to be filtered out of the results.
+	 * @param options.fnFilterResults Function which takes a document and returns false if it is to be filtered out of the results.
 	 * @param options.searchOptions Override for default elasticlunr search options.
-	 * @param options.fnTransform Override for default document transformation before being passed to cbSearch.
+	 * @param options.fnTransform Function which transforms the document before passing it back to cbSearch.
 	 */
 	constructor (indexes, cbSearch, options) {
 		options = options || {};
@@ -595,14 +1008,15 @@ class SearchWidget {
 		this._indexes = indexes;
 		this._cat = options.defaultCategory || "ALL";
 		this._cbSearch = cbSearch;
-		this._resultFilter = options.resultFilter || null;
+		this._fnFilterResults = options.fnFilterResults || null;
 		this._searchOptions = options.searchOptions || null;
 		this._fnTransform = options.fnTransform || null;
 
 		this._flags = {
 			doClickFirst: false,
-			isWait: false
+			isWait: false,
 		};
+		this._$ptrRows = {_: []};
 
 		this._$selCat = null;
 		this._$iptSearch = null;
@@ -624,15 +1038,15 @@ class SearchWidget {
 		return this._searchOptions || {
 			fields: {
 				n: {boost: 5, expand: true},
-				s: {expand: true}
+				s: {expand: true},
 			},
 			bool: "AND",
-			expand: true
+			expand: true,
 		};
 	}
 
-	static __get$Row (r) {
-		return $(`<div class="ui-search__row">
+	__$getRow (r) {
+		return $(`<div class="ui-search__row" tabindex="0">
 			<span>${r.doc.n}</span>
 			<span>${r.doc.s ? `<i title="${Parser.sourceJsonToFull(r.doc.s)}">${Parser.sourceJsonToAbv(r.doc.s)}${r.doc.p ? ` p${r.doc.p}` : ""}</i>` : ""}</span>
 		</div>`);
@@ -653,16 +1067,16 @@ class SearchWidget {
 
 	__showMsgInputRequired () {
 		this._flags.isWait = true;
-		this._$wrpResults.empty().append(UiUtil.getSearchEnter());
+		this._$wrpResults.empty().append(SearchWidget.getSearchEnter());
 	}
 
 	__showMsgWait () {
-		this._$wrpResults.empty().append(UiUtil.getSearchLoading())
+		this._$wrpResults.empty().append(SearchWidget.getSearchLoading())
 	}
 
 	__showMsgNoResults () {
 		this._flags.isWait = true;
-		this._$wrpResults.empty().append(UiUtil.getSearchEnter());
+		this._$wrpResults.empty().append(SearchWidget.getSearchNoResults());
 	}
 
 	__doSearch () {
@@ -673,45 +1087,50 @@ class SearchWidget {
 
 		const {toProcess, resultCount} = (() => {
 			if (results.length) {
-				if (this._resultFilter) {
-					const filtered = results.filter(it => this._resultFilter(it.doc));
+				if (this._fnFilterResults) {
+					const filtered = results.filter(it => this._fnFilterResults(it.doc));
 					return {
 						toProcess: filtered.slice(0, UiUtil.SEARCH_RESULTS_CAP),
-						resultCount: filtered.length
+						resultCount: filtered.length,
 					}
 				} else {
 					return {
 						toProcess: results.slice(0, UiUtil.SEARCH_RESULTS_CAP),
-						resultCount: results.length
+						resultCount: results.length,
 					}
 				}
 			} else {
-				if (this._resultFilter) {
-					const filtered = Object.values(index.documentStore.docs).filter(it => this._resultFilter(it)).map(it => ({doc: it}));
+				// If the user has entered a search and we found nothing, return no results
+				if (searchInput.trim()) {
+					return {
+						toProcess: [],
+						resultCount: 0,
+					};
+				}
+
+				// Otherwise, we have no search term, so show a default list of results
+				if (this._fnFilterResults) {
+					const filtered = Object.values(index.documentStore.docs).filter(it => this._fnFilterResults(it)).map(it => ({doc: it}));
 					return {
 						toProcess: filtered.slice(0, UiUtil.SEARCH_RESULTS_CAP),
-						resultCount: filtered.length
+						resultCount: filtered.length,
 					}
 				} else {
 					return {
 						toProcess: Object.values(index.documentStore.docs).slice(0, UiUtil.SEARCH_RESULTS_CAP).map(it => ({doc: it})),
-						resultCount: Object.values(index.documentStore.docs).length
+						resultCount: Object.values(index.documentStore.docs).length,
 					}
 				}
 			}
 		})();
 
 		this._$wrpResults.empty();
-		if (toProcess.length) {
+		this._$ptrRows._ = [];
+
+		if (resultCount) {
 			const handleClick = (r) => {
 				if (this._fnTransform) this._cbSearch(this._fnTransform(r.doc));
-				else {
-					const page = UrlUtil.categoryToPage(r.doc.c);
-					const source = r.doc.s;
-					const hash = r.doc.u;
-
-					this._cbSearch(page, source, hash);
-				}
+				else this._cbSearch(r.doc);
 			};
 
 			if (this._flags.doClickFirst) {
@@ -722,7 +1141,11 @@ class SearchWidget {
 
 			const res = toProcess.slice(0, UiUtil.SEARCH_RESULTS_CAP);
 
-			res.forEach(r => SearchWidget.__get$Row(r).on("click", () => handleClick(r)).appendTo(this._$wrpResults));
+			res.forEach(r => {
+				const $row = this.__$getRow(r).appendTo(this._$wrpResults);
+				SearchWidget.bindRowHandlers({result: r, $row, $ptrRows: this._$ptrRows, fnHandleClick: handleClick});
+				this._$ptrRows._.push($row);
+			});
 
 			if (resultCount > UiUtil.SEARCH_RESULTS_CAP) {
 				const diff = resultCount - UiUtil.SEARCH_RESULTS_CAP;
@@ -736,8 +1159,8 @@ class SearchWidget {
 
 	_render () {
 		if (!this._$rendered) {
-			this._$rendered = $(`<div class="ui-search__wrp-output"/>`);
-			const $wrpControls = $(`<div class="ui-search__wrp-controls"/>`).appendTo(this._$rendered);
+			this._$rendered = $(`<div class="ui-search__wrp-output"></div>`);
+			const $wrpControls = $(`<div class="ui-search__wrp-controls"></div>`).appendTo(this._$rendered);
 
 			this._$selCat = $(`<select class="form-control ui-search__sel-category">
 				<option value="ALL">${SearchWidget.__getAllTitle()}</option>
@@ -750,12 +1173,23 @@ class SearchWidget {
 				});
 
 			this._$iptSearch = $(`<input class="ui-search__ipt-search search form-control" autocomplete="off" placeholder="Search...">`).appendTo($wrpControls);
-			this._$wrpResults = $(`<div class="ui-search__wrp-results"/>`).appendTo(this._$rendered);
+			this._$wrpResults = $(`<div class="ui-search__wrp-results"></div>`).appendTo(this._$rendered);
 
-			UiUtil.bindAutoSearch(this._$iptSearch, {
+			let lastSearchTerm = "";
+			SearchWidget.bindAutoSearch(this._$iptSearch, {
 				flags: this._flags,
-				search: this.__doSearch.bind(this),
-				showWait: this.__showMsgWait.bind(this)
+				fnSearch: this.__doSearch.bind(this),
+				fnShowWait: this.__showMsgWait.bind(this),
+				$ptrRows: this._$ptrRows,
+			});
+
+			// On the first keypress, switch to loading dots
+			this._$iptSearch.keydown(evt => {
+				if (evt.key === "Escape") this._$iptSearch.blur();
+				if (evt.which !== 13) {
+					if (lastSearchTerm === "") this.__showMsgWait();
+					lastSearchTerm = this._$iptSearch.val();
+				}
 			});
 
 			this.__doSearch();
@@ -766,17 +1200,18 @@ class SearchWidget {
 		this._$iptSearch.focus();
 	}
 
-	static addToIndexes (prop, entry) {
+	static async pAddToIndexes (prop, entry) {
 		const nextId = Object.values(SearchWidget.CONTENT_INDICES.ALL.documentStore.docs).length;
 
 		const indexer = new Omnidexer(nextId);
 
 		const toIndex = {[prop]: [entry]};
 
-		Omnidexer.TO_INDEX__FROM_INDEX_JSON.filter(it => it.listProp === prop)
-			.forEach(it => indexer.addToIndex(it, toIndex));
-		Omnidexer.TO_INDEX.filter(it => it.listProp === prop)
-			.forEach(it => indexer.addToIndex(it, toIndex));
+		const toIndexMultiPart = Omnidexer.TO_INDEX__FROM_INDEX_JSON.filter(it => it.listProp === prop);
+		for (const it of toIndexMultiPart) await indexer.pAddToIndex(it, toIndex);
+
+		const toIndexSinglePart = Omnidexer.TO_INDEX.filter(it => it.listProp === prop);
+		for (const it of toIndexSinglePart) await indexer.pAddToIndex(it, toIndex);
 
 		const toAdd = Omnidexer.decompressIndex(indexer.getIndex());
 		toAdd.forEach(d => {
@@ -791,27 +1226,75 @@ class SearchWidget {
 		opts = opts || {};
 		await SearchWidget.P_LOADING_CONTENT;
 
-		const nxtOpts = {};
-		if (opts.level != null) nxtOpts.resultFilter = result => result.lvl === opts.level;
-		const tagBuilder = (encName, encSource) => `{@spell ${decodeURIComponent(encName)}${encSource !== UrlUtil.encodeForHash(SRC_PHB) ? `|${decodeURIComponent(encSource)}` : ""}}`;
+		const nxtOpts = {
+			fnTransform: doc => {
+				const cpy = MiscUtil.copy(doc);
+				Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+				cpy.tag = `{@spell ${doc.n.toSpellCase()}${doc.s !== SRC_PHB ? `|${doc.s}` : ""}}`;
+				return cpy;
+			},
+		};
+		if (opts.level != null) nxtOpts.fnFilterResults = result => result.lvl === opts.level;
+
 		const title = opts.level === 0 ? "Select Cantrip" : "Select Spell";
-		return SearchWidget.pGetUserEntitySearch(title, "alt_Spell", tagBuilder, nxtOpts);
+		return SearchWidget.pGetUserEntitySearch(
+			title,
+			"alt_Spell",
+			nxtOpts,
+		);
+	}
+
+	static async pGetUserLegendaryGroupSearch () {
+		await SearchWidget.pLoadCustomIndex("entity_LegendaryGroups", `${Renderer.get().baseUrl}data/bestiary/legendarygroups.json`, "legendaryGroup", Parser.CAT_ID_LEGENDARY_GROUP, "legendaryGroup", "legendary groups");
+
+		return SearchWidget.pGetUserEntitySearch(
+			"Select Legendary Group",
+			"entity_LegendaryGroups",
+			{
+				fnTransform: doc => {
+					const cpy = MiscUtil.copy(doc);
+					Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+					cpy.page = "legendaryGroup";
+					return cpy;
+				},
+			},
+		);
 	}
 
 	static async pGetUserFeatSearch () {
 		// FIXME convert to be more like spell/creature search instead of running custom indexes
 		await SearchWidget.pLoadCustomIndex("entity_Feats", `${Renderer.get().baseUrl}data/feats.json`, "feat", Parser.CAT_ID_FEAT, UrlUtil.PG_FEATS, "feats");
 
-		const tagBuilder = (encName, encSource) => `{@feat ${decodeURIComponent(encName)}${encSource !== UrlUtil.encodeForHash(SRC_PHB) ? `|${decodeURIComponent(encSource)}` : ""}}`;
-		return SearchWidget.pGetUserEntitySearch("Select Feat", "entity_Feats", tagBuilder);
+		return SearchWidget.pGetUserEntitySearch(
+			"Select Feat",
+			"entity_Feats",
+			{
+				fnTransform: doc => {
+					const cpy = MiscUtil.copy(doc);
+					Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+					cpy.tag = `{@feat ${doc.n}${doc.s !== SRC_PHB ? `|${doc.s}` : ""}}`;
+					return cpy;
+				},
+			},
+		);
 	}
 
 	static async pGetUserBackgroundSearch () {
 		// FIXME convert to be more like spell/creature search instead of running custom indexes
 		await SearchWidget.pLoadCustomIndex("entity_Backgrounds", `${Renderer.get().baseUrl}data/backgrounds.json`, "background", Parser.CAT_ID_BACKGROUND, UrlUtil.PG_BACKGROUNDS, "backgrounds");
 
-		const tagBuilder = (encName, encSource) => `{@background ${decodeURIComponent(encName)}${encSource !== UrlUtil.encodeForHash(SRC_PHB) ? `|${decodeURIComponent(encSource)}` : ""}}`;
-		return SearchWidget.pGetUserEntitySearch("Select Background", "entity_Backgrounds", tagBuilder);
+		return SearchWidget.pGetUserEntitySearch(
+			"Select Background",
+			"entity_Backgrounds",
+			{
+				fnTransform: doc => {
+					const cpy = MiscUtil.copy(doc);
+					Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+					cpy.tag = `{@background ${doc.n}${doc.s !== SRC_PHB ? `|${doc.s}` : ""}}`;
+					return cpy;
+				},
+			},
+		);
 	}
 
 	static async pGetUserRaceSearch () {
@@ -823,23 +1306,60 @@ class SearchWidget {
 		};
 		await SearchWidget.pLoadCustomIndex("entity_Races", dataSource, "race", Parser.CAT_ID_RACE, UrlUtil.PG_RACES, "races");
 
-		const tagBuilder = (encName, encSource) => `{@race ${decodeURIComponent(encName)}${encSource !== UrlUtil.encodeForHash(SRC_PHB) ? `|${decodeURIComponent(encSource)}` : ""}}`;
-		return SearchWidget.pGetUserEntitySearch("Select Race", "entity_Races", tagBuilder);
+		return SearchWidget.pGetUserEntitySearch(
+			"Select Race",
+			"entity_Races",
+			{
+				fnTransform: doc => {
+					const cpy = MiscUtil.copy(doc);
+					Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+					cpy.tag = `{@race ${doc.n}${doc.s !== SRC_PHB ? `|${doc.s}` : ""}}`;
+					return cpy;
+				},
+			},
+		);
 	}
 
 	static async pGetUserOptionalFeatureSearch () {
 		// FIXME convert to be more like spell/creature search instead of running custom indexes
 		await SearchWidget.pLoadCustomIndex("entity_OptionalFeatures", `${Renderer.get().baseUrl}data/optionalfeatures.json`, "optionalfeature", Parser.CAT_ID_OPTIONAL_FEATURE_OTHER, UrlUtil.PG_OPT_FEATURES, "optional features");
 
-		const tagBuilder = (encName, encSource) => `{@optfeature ${decodeURIComponent(encName)}${encSource !== UrlUtil.encodeForHash(SRC_PHB) ? `|${decodeURIComponent(encSource)}` : ""}}`;
-		return SearchWidget.pGetUserEntitySearch("Select Optional Feature", "entity_OptionalFeatures", tagBuilder);
+		return SearchWidget.pGetUserEntitySearch(
+			"Select Optional Feature",
+			"entity_OptionalFeatures",
+			{
+				fnTransform: doc => {
+					const cpy = MiscUtil.copy(doc);
+					Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+					cpy.tag = `{@optfeature ${doc.n}${doc.s !== SRC_PHB ? `|${doc.s}` : ""}}`;
+					return cpy;
+				},
+			},
+		);
+	}
+
+	static async pGetUserAdventureSearch (opts) {
+		await SearchWidget.pLoadCustomIndex("entity_Adventures", `${Renderer.get().baseUrl}data/adventures.json`, "adventure", Parser.CAT_ID_ADVENTURE, UrlUtil.PG_ADVENTURE, "adventures");
+		return SearchWidget.pGetUserEntitySearch("Select Adventure", "entity_Adventures", opts);
 	}
 
 	static async pGetUserCreatureSearch () {
 		await SearchWidget.P_LOADING_CONTENT;
-		const nxtOpts = {};
-		const tagBuilder = (encName, encSource) => `{@creature ${decodeURIComponent(encName)}${encSource !== UrlUtil.encodeForHash(SRC_PHB) ? `|${decodeURIComponent(encSource)}` : ""}}`;
-		return SearchWidget.pGetUserEntitySearch("Select Creature", "Creature", tagBuilder, nxtOpts);
+
+		const nxtOpts = {
+			fnTransform: doc => {
+				const cpy = MiscUtil.copy(doc);
+				Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+				cpy.tag = `{@creature ${doc.n}${doc.s !== SRC_MM ? `|${doc.s}` : ""}}`;
+				return cpy;
+			},
+		};
+
+		return SearchWidget.pGetUserEntitySearch(
+			"Select Creature",
+			"Creature",
+			nxtOpts,
+		);
 	}
 
 	static async __pLoadItemIndex (isBasicIndex) {
@@ -849,9 +1369,9 @@ class SearchWidget {
 				item: allItems.filter(it => {
 					if (it.type === "GV") return false;
 					if (isBasicIndex == null) return true;
-					const isBasic = it.rarity === "None" || it.rarity === "Unknown" || it._category === "Basic";
+					const isBasic = it.rarity === "none" || it.rarity === "unknown" || it._category === "basic";
 					return isBasicIndex ? isBasic : !isBasic;
-				})
+				}),
 			};
 		};
 		const indexName = isBasicIndex == null ? "entity_Items" : isBasicIndex ? "entity_ItemsBasic" : "entity_ItemsMagic";
@@ -859,9 +1379,19 @@ class SearchWidget {
 	}
 
 	static async __pGetUserItemSearch (isBasicIndex) {
-		const tagBuilder = (encName, encSource) => `{@item ${decodeURIComponent(encName)}${encSource !== UrlUtil.encodeForHash(SRC_DMG) ? `|${decodeURIComponent(encSource)}` : ""}}`;
 		const indexName = isBasicIndex == null ? "entity_Items" : isBasicIndex ? "entity_ItemsBasic" : "entity_ItemsMagic";
-		return SearchWidget.pGetUserEntitySearch("Select Item", indexName, tagBuilder);
+		return SearchWidget.pGetUserEntitySearch(
+			"Select Item",
+			indexName,
+			{
+				fnTransform: doc => {
+					const cpy = MiscUtil.copy(doc);
+					Object.assign(cpy, SearchWidget.docToPageSourceHash(cpy));
+					cpy.tag = `{@item ${doc.n}${doc.s !== SRC_DMG ? `|${doc.s}` : ""}}`;
+					return cpy;
+				},
+			},
+		);
 	}
 
 	static async pGetUserBasicItemSearch () {
@@ -880,35 +1410,36 @@ class SearchWidget {
 	}
 	// endregion
 
-	static async pGetUserEntitySearch (title, indexName, tagBuilder, opts) {
+	/**
+	 *
+	 * @param title
+	 * @param indexName
+	 * @param [opts]
+	 * @param [opts.fnFilterResults]
+	 * @param [opts.fnTransform]
+	 */
+	static async pGetUserEntitySearch (title, indexName, opts) {
 		opts = opts || {};
 
 		return new Promise(resolve => {
 			const searchOpts = {defaultCategory: indexName};
-			if (opts.resultFilter) searchOpts.resultFilter = opts.resultFilter;
+			if (opts.fnFilterResults) searchOpts.fnFilterResults = opts.fnFilterResults;
+			if (opts.fnTransform) searchOpts.fnTransform = opts.fnTransform;
 
 			const searchWidget = new SearchWidget(
 				{[indexName]: SearchWidget.CONTENT_INDICES[indexName]},
-				(page, source, hash) => {
-					const [encName] = hash.split(HASH_LIST_SEP);
-					const name = decodeURIComponent(encName);
+				(docOrTransformed) => {
 					doClose(false); // "cancel" close
-					resolve({
-						page,
-						source,
-						hash,
-						name,
-						tag: tagBuilder(name, source)
-					});
+					resolve(docOrTransformed);
 				},
-				searchOpts
+				searchOpts,
 			);
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title,
 				cbClose: (doResolve) => {
 					searchWidget.$wrpSearch.detach();
 					if (doResolve) resolve(null); // ensure resolution
-				}
+				},
 			});
 			$modalInner.append(searchWidget.$wrpSearch);
 			searchWidget.doFocus();
@@ -925,7 +1456,7 @@ class SearchWidget {
 				SearchWidget.P_LOADING_INDICES[contentIndexName] = (SearchWidget.CONTENT_INDICES[contentIndexName] = await SearchWidget._pGetIndex(dataSource, jsonProp, catId, page));
 				SearchWidget.P_LOADING_INDICES[contentIndexName] = null;
 			} catch (e) {
-				JqueryUtil.doToast({type: "danger", content: `Could not load ${errorName}! ${MiscUtil.STR_SEE_CONSOLE}`});
+				JqueryUtil.doToast({type: "danger", content: `Could not load ${errorName}! ${VeCt.STR_SEE_CONSOLE}`});
 				throw e;
 			} finally {
 				doClose();
@@ -942,7 +1473,7 @@ class SearchWidget {
 
 		const [featJson, homebrew] = await Promise.all([
 			typeof dataSource === "string" ? DataUtil.loadJSON(dataSource) : dataSource(),
-			BrewUtil.pAddBrewData()
+			BrewUtil.pAddBrewData(),
 		]);
 
 		featJson[prop].concat(homebrew[prop] || []).forEach((it, i) => index.addDoc({
@@ -953,7 +1484,7 @@ class SearchWidget {
 			n: it.name,
 			p: it.page,
 			s: it.source,
-			u: UrlUtil.URL_TO_HASH_BUILDER[page](it)
+			u: UrlUtil.URL_TO_HASH_BUILDER[page](it),
 		}));
 
 		return index;
@@ -961,7 +1492,7 @@ class SearchWidget {
 
 	static _showLoadingModal () {
 		const {$modalInner, doClose} = UiUtil.getShowModal({isPermanent: true});
-		$(`<div class="flex-vh-center w-100 h-100"><span class="dnd-font italic text-muted">Loading...</span></div>`).appendTo($modalInner);
+		$(`<div class="flex-vh-center w-100 h-100"><span class="dnd-font italic ve-muted">Loading...</span></div>`).appendTo($modalInner);
 		return doClose;
 	}
 	// endregion
@@ -978,37 +1509,132 @@ class InputUiUtil {
 	 * @param opts.int If the value returned should be an integer.
 	 * @param opts.title Prompt title.
 	 * @param opts.default Default value.
+	 * @param [opts.$elePre] Element to add before the number input.
+	 * @param [opts.$elePost] Element to add after the number input.
+	 * @param [opts.isPermanent] If the prompt can only be closed by entering a number.
+	 * @param [opts.isSkippable] If the prompt is skippable.
+	 * @param [opts.storageKey_default] Storage key for a "default" value override using the user's last/previous input.
+	 * @param [opts.isGlobal_default] If the "default" storage key is global (rather than page-specific).
 	 * @return {Promise<number>} A promise which resolves to the number if the user entered one, or null otherwise.
 	 */
-	static pGetUserNumber (opts) {
+	static async pGetUserNumber (opts) {
 		opts = opts || {};
+
+		let defaultVal = opts.default !== undefined ? opts.default : null;
+		if (opts.storageKey_default) {
+			const prev = await (opts.isGlobal_default ? StorageUtil.pGet(opts.storageKey_default) : StorageUtil.pGetForPage(opts.storageKey_default));
+			if (prev != null) defaultVal = prev;
+		}
+
 		return new Promise(resolve => {
-			const $iptNumber = $(`<input class="form-control mb-2 text-right" type="number" ${opts.min ? `min="${opts.min}"` : ""} ${opts.max ? `max="${opts.max}"` : ""} ${opts.default != null ? `value="${opts.default}"` : ""}>`)
+			const $iptNumber = $(`<input class="form-control mb-2 text-right" ${opts.min ? `min="${opts.min}"` : ""} ${opts.max ? `max="${opts.max}"` : ""}>`)
 				.keydown(evt => {
+					if (evt.key === "Escape") { $iptNumber.blur(); return; }
 					// return key
 					if (evt.which === 13) doClose(true);
 					evt.stopPropagation();
 				});
-			const $btnOk = $(`<button class="btn btn-default">Enter</button>`)
+			if (defaultVal !== undefined) $iptNumber.val(defaultVal);
+
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
+
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: opts.title || "Enter a Number",
-				noMinHeight: true,
+				isMinHeight0: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
+
 					if (!isDataEntered) return resolve(null);
 					const raw = $iptNumber.val();
 					if (!raw.trim()) return resolve(null);
-					let num = Number(raw) || 0;
+					let num = UiUtil.strToInt(raw);
 					if (opts.min) num = Math.max(opts.min, num);
 					if (opts.max) num = Math.min(opts.max, num);
-					if (opts.int) return resolve(Math.round(num));
-					else resolve(num);
-				}
+					if (opts.int) num = Math.round(num);
+
+					if (opts.storageKey_default) {
+						opts.isGlobal_default
+							? StorageUtil.pSet(opts.storageKey_default, num)
+							: StorageUtil.pSetForPage(opts.storageKey_default, num);
+					}
+
+					resolve(num);
+				},
 			});
+
+			if (opts.$elePre) opts.$elePre.appendTo($modalInner);
 			$iptNumber.appendTo($modalInner);
-			$$`<div class="flex-vh-center">${$btnOk}</div>`.appendTo($modalInner);
+			if (opts.$elePost) opts.$elePost.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 			$iptNumber.focus();
 			$iptNumber.select();
+		});
+	}
+
+	/**
+	 * @param [opts] Options.
+	 * @param [opts.title] Prompt title.
+	 * @param [opts.textYesRemember] Text for "yes, and remember" button.
+	 * @param [opts.textYes] Text for "yes" button.
+	 * @param [opts.textNo] Text for "no" button.
+	 * @param [opts.htmlDescription] Description HTML for the modal.
+	 * @param [opts.storageKey] Storage key to use when "remember" options are passed.
+	 * @param [opts.isGlobal] If the stored setting is global when "remember" options are passed.
+	 * @param [opts.fnRemember] Custom function to run when saving the "yes and remember" option.
+	 * @param [opts.isSkippable] If the prompt is skippable.
+	 * @return {Promise} A promise which resolves to true/false if the user chose, or null otherwise.
+	 */
+	static async pGetUserBoolean (opts) {
+		opts = opts || {};
+
+		if (opts.storageKey) {
+			const prev = await (opts.isGlobal ? StorageUtil.pGet(opts.storageKey) : StorageUtil.pGetForPage(opts.storageKey));
+			if (prev != null) return prev;
+		}
+
+		return new Promise(resolve => {
+			const $btnTrueRemember = opts.textYesRemember ? $(`<button class="btn btn-primary flex-v-center"><span class="glyphicon glyphicon-ok mr-2"></span><span>${opts.textYesRemember}</span></button>`)
+				.click(() => {
+					doClose(true, true);
+					if (opts.fnRemember) {
+						opts.fnRemember(true);
+					} else {
+						opts.isGlobal
+							? StorageUtil.pSet(opts.storageKey, true)
+							: StorageUtil.pSetForPage(opts.storageKey, true);
+					}
+				}) : null;
+
+			const $btnTrue = $(`<button class="btn btn-primary flex-v-center mr-3"><span class="glyphicon glyphicon-ok mr-2"></span><span>${opts.textYes || "OK"}</span></button>`)
+				.click(() => doClose(true, true));
+
+			const $btnFalse = $(`<button class="btn btn-default btn-sm flex-v-center"><span class="glyphicon glyphicon-remove mr-2"></span><span>${opts.textNo || "Cancel"}</span></button>`)
+				.click(() => doClose(true, false));
+
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
+
+			const {$modalInner, doClose} = UiUtil.getShowModal({
+				title: opts.title || "Choose",
+				isMinHeight0: true,
+				cbClose: (isDataEntered, value) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
+
+					if (!isDataEntered) return resolve(null);
+					if (value == null) throw new Error(`Callback must receive a value!`); // sanity check
+					resolve(value);
+				},
+			});
+
+			if (opts.htmlDescription && opts.htmlDescription.trim()) $$`<div class="flex w-100 mb-1">${opts.htmlDescription}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right py-1 px-1">${$btnTrueRemember}${$btnTrue}${$btnFalse}${$btnSkip}</div>`.appendTo($modalInner);
+			$btnTrue.focus();
+			$btnTrue.select();
 		});
 	}
 
@@ -1022,6 +1648,8 @@ class InputUiUtil {
 	 * @param [opts.isResolveItem] True if the promise should resolve the item instead of the index.
 	 * @param [opts.$elePost] Element to add below the select box.
 	 * @param [opts.fnGetExtraState] Function which returns additional state from, generally, other elements in the modal.
+	 * @param [opts.isAllowNull] If an empty input should be treated as null.
+	 * @param [opts.isSkippable] If the prompt is skippable.
 	 * @return {Promise} A promise which resolves to the index of the item the user selected (or an object if fnGetExtraState is passed), or null otherwise.
 	 */
 	static pGetUserEnum (opts) {
@@ -1029,17 +1657,25 @@ class InputUiUtil {
 		return new Promise(resolve => {
 			const $selEnum = $(`<select class="form-control mb-2"><option value="-1" disabled>${opts.placeholder || "Select..."}</option></select>`);
 
-			opts.values.forEach((v, i) => $(`<option value="${i}"/>`).text(opts.fnDisplay ? opts.fnDisplay(v, i) : v).appendTo($selEnum));
+			if (opts.isAllowNull) $(`<option value="-1"></option>`).text(opts.fnDisplay ? opts.fnDisplay(null, -1) : "(None)").appendTo($selEnum);
+
+			opts.values.forEach((v, i) => $(`<option value="${i}"></option>`).text(opts.fnDisplay ? opts.fnDisplay(v, i) : v).appendTo($selEnum));
 			if (opts.default != null) $selEnum.val(opts.default);
 			else $selEnum[0].selectedIndex = 0;
 
-			const $btnOk = $(`<button class="btn btn-default">Confirm</button>`)
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
 
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: opts.title || "Select an Option",
-				noMinHeight: true,
+				isMinHeight0: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
+
 					if (!isDataEntered) return resolve(null);
 					const ix = Number($selEnum.val());
 					if (!~ix) return resolve(null);
@@ -1049,84 +1685,53 @@ class InputUiUtil {
 						else out.ix = ix;
 						resolve(out)
 					} else resolve(opts.isResolveItem ? opts.values[ix] : ix);
-				}
+				},
 			});
 			$selEnum.appendTo($modalInner);
 			if (opts.$elePost) opts.$elePost.appendTo($modalInner);
-			$$`<div class="flex-vh-center">${$btnOk}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 			$selEnum.focus();
 		});
 	}
 
 	/**
 	 * @param opts Options.
-	 * @param opts.values Array of values.
+	 * @param [opts.values] Array of values. Mutually incompatible with "valueGroups".
+	 * @param [opts.valueGroups] Array of value groups (of the form `{name: "Group Name", values: [...]}`). Mutually incompatible with "values".
 	 * @param [opts.title] Prompt title.
+	 * @param [opts.htmlDescription] Description HTML for the modal.
 	 * @param [opts.count] Number of choices the user can make (cannot be used with min/max).
 	 * @param [opts.min] Minimum number of choices the user can make (cannot be used with count).
 	 * @param [opts.max] Maximum number of choices the user can make (cannot be used with count).
-	 * @param [opts.defaults] Default selected indices.
+	 * @param [opts.defaults] Array of default-selected indices.
+	 * @param [opts.required] Array of always-selected indices.
 	 * @param [opts.isResolveItems] True if the promise should resolve to an array of the items instead of the indices.
 	 * @param [opts.fnDisplay] Function which takes a value and returns display text.
+	 * @param [opts.modalOpts] Options to pass through to the underlying modal class.
+	 * @param [opts.isSkippable] If the prompt is skippable.
 	 * @return {Promise} A promise which resolves to the indices of the items the user selected, or null otherwise.
 	 */
 	static pGetUserMultipleChoice (opts) {
-		opts = opts || {};
-
-		if (opts.count != null && (opts.min != null || opts.max != null)) throw new Error(`Chooser must be either in "count" mode or "min/max" mode!`);
-		// If no mode is specified, default to a "count 1" chooser
-		if (opts.count == null && opts.min == null && opts.max == null) opts.count = 1;
-
-		class ChoiceRow extends BaseComponent {
-			_getDefaultState () { return {isActive: false}; }
-		}
-
 		return new Promise(resolve => {
-			const $btnOk = $(`<button class="btn btn-default">Confirm</button>`)
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
 
-			const rowMetas = [];
-			opts.values.forEach((v, i) => {
-				const comp = new ChoiceRow();
-				if (opts.defaults) comp._state.isActive = opts.defaults.includes(i);
+			const prop = "formData";
 
-				const $cb = ComponentUiUtil.$getCbBool(comp, "isActive");
-				const hookDisable = () => {
-					const activeRows = rowMetas.filter(it => it.comp._state.isActive);
-
-					let isAcceptable = false;
-					if (opts.count != null) {
-						if (activeRows.length >= opts.count) isAcceptable = true;
-					} else {
-						if (activeRows.length >= (opts.min || 0) && activeRows.length <= (opts.max || Number.MAX_SAFE_INTEGER)) isAcceptable = true;
-					}
-
-					if (isAcceptable) {
-						if (opts.count != null || (opts.max != null && activeRows.length === opts.max)) {
-							rowMetas.forEach(it => it.$cb.attr("disabled", !it.comp._state.isActive));
-						} else {
-							rowMetas.forEach(it => it.$cb.attr("disabled", false));
-						}
-						$btnOk.attr("disabled", false);
-					} else {
-						rowMetas.forEach(it => it.$cb.attr("disabled", false));
-						$btnOk.attr("disabled", true);
-					}
-				};
-				comp._addHookBase("isActive", hookDisable);
-				hookDisable();
-
-				rowMetas.push({
-					$cb,
-					$ele: $$`<label class="flex-v-center row my-1">
-						<div class="col-2 flex-vh-center">${$cb}</div>
-						<div class="col-10">${opts.fnDisplay ? opts.fnDisplay(v, i) : v}</div>
-					</label>`,
-					comp
+			const initialState = {};
+			if (opts.defaults) opts.defaults.forEach(ix => initialState[ComponentUiUtil.getMetaWrpMultipleChoice_getPropIsActive(prop, ix)] = true);
+			if (opts.required) {
+				opts.required.forEach(ix => {
+					initialState[ComponentUiUtil.getMetaWrpMultipleChoice_getPropIsActive(prop, ix)] = true; // "requires" implies "default"
+					initialState[ComponentUiUtil.getMetaWrpMultipleChoice_getPropIsRequired(prop, ix)] = true;
 				});
-			});
+			}
 
-			const $wrpList = $$`<div class="flex-col w-100 striped-even mb-1 overflow-y-auto">${rowMetas.map(it => it.$ele)}</div>`;
+			const comp = BaseComponent.fromObject(initialState);
 
 			let title = opts.title;
 			if (!title) {
@@ -1136,19 +1741,36 @@ class InputUiUtil {
 				else title = `Choose At Most ${Parser.numberToText(opts.max).uppercaseFirst()}`;
 			}
 
+			const {$ele: $wrpList, propIsAcceptable} = ComponentUiUtil.getMetaWrpMultipleChoice(comp, prop, opts);
+			$wrpList.addClass(`mb-1`);
+
+			const hkIsAcceptable = () => $btnOk.attr("disabled", !comp._state[propIsAcceptable]);
+			comp._addHookBase(propIsAcceptable, hkIsAcceptable)
+			hkIsAcceptable();
+
 			const {$modalInner, doClose} = UiUtil.getShowModal({
+				...(opts.modalOpts || {}),
 				title,
-				noMinHeight: true,
+				isMinHeight0: true,
+				isUncappedHeight: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
+
 					if (!isDataEntered) return resolve(null);
 
-					const ixs = rowMetas.map((row, ix) => row.comp._state.isActive ? ix : null).filter(it => it != null);
-					resolve(opts.isResolveItems ? ixs.map(ix => opts.values[ix]) : ixs);
-				}
+					const ixs = ComponentUiUtil.getMetaWrpMultipleChoice_getSelectedIxs(comp, prop);
+
+					if (!opts.isResolveItems) resolve(ixs);
+					else if (opts.values) resolve(ixs.map(ix => opts.values[ix]));
+					else if (opts.valueGroups) {
+						const allValues = opts.valueGroups.map(it => it.values).flat();
+						resolve(ixs.map(ix => allValues[ix]))
+					}
+				},
 			});
-			$modalInner.addClass("flex-col");
+			if (opts.htmlDescription) $modalInner.append(opts.htmlDescription);
 			$wrpList.appendTo($modalInner);
-			$$`<div class="flex-vh-center no-shrink">${$btnOk}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right no-shrink pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 			$wrpList.focus();
 		});
 	}
@@ -1157,9 +1779,10 @@ class InputUiUtil {
 	 * NOTE: designed to work with FontAwesome.
 	 *
 	 * @param opts Options.
-	 * @param opts.values Array of icon metadata. Items should be of the form: `{name: "<n>", iconClass: "<c>", buttonClass: "<cs>"}`
+	 * @param opts.values Array of icon metadata. Items should be of the form: `{name: "<n>", iconClass: "<c>", buttonClass: "<cs>", buttonClassActive: "<cs>"}`
 	 * @param opts.title Prompt title.
 	 * @param opts.default Default selected index.
+	 * @param [opts.isSkippable] If the prompt is skippable.
 	 * @return {Promise<number>} A promise which resolves to the index of the item the user selected, or null otherwise.
 	 */
 	static pGetUserIcon (opts) {
@@ -1170,15 +1793,16 @@ class InputUiUtil {
 
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: opts.title || "Select an Option",
-				noMinHeight: true,
+				isMinHeight0: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
 					if (!isDataEntered) return resolve(null);
 					return resolve(~lastIx ? lastIx : null);
-				}
+				},
 			});
 
 			$$`<div class="flex flex-wrap flex-h-center mb-2">${opts.values.map((v, i) => {
-				const $btn = $$`<div class="m-2 btn ${v.buttonClass || "btn-default"} ui-icn__btn flex-col flex-h-center">
+				const $btn = $$`<div class="m-2 btn ${v.buttonClass || "btn-default"} ui__btn-xxl-square flex-col flex-h-center">
 					${v.iconClass ? `<div class="ui-icn__wrp-icon ${v.iconClass} mb-1"></div>` : ""}
 					${v.iconContent ? v.iconContent : ""}
 					<div class="whitespace-normal w-100">${v.name}</div>
@@ -1187,30 +1811,46 @@ class InputUiUtil {
 						lastIx = i;
 						onclicks.forEach(it => it());
 					})
-					.toggleClass("active", opts.default === i);
-				onclicks.push(() => $btn.toggleClass("active", lastIx === i));
+					.toggleClass(v.buttonClassActive || "active", opts.default === i);
+				if (v.buttonClassActive && opts.default === i) {
+					$btn.removeClass("btn-default").addClass(v.buttonClassActive);
+				}
+
+				onclicks.push(() => {
+					$btn.toggleClass(v.buttonClassActive || "active", lastIx === i);
+					if (v.buttonClassActive) $btn.toggleClass("btn-default", lastIx !== i);
+				});
 				return $btn;
 			})}</div>`.appendTo($modalInner);
 
-			const $btnOk = $(`<button class="btn btn-default">Confirm</button>`)
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
 
-			$$`<div class="flex-vh-center">${$btnOk}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 		});
 	}
 
 	/**
-	 * @param opts Options.
-	 * @param opts.title Prompt title.
-	 * @param opts.default Default value.
-	 * @param opts.autocomplete Array of autocomplete strings. REQUIRES INCLUSION OF THE TYPEAHEAD LIBRARY.
+	 * @param [opts] Options.
+	 * @param [opts.title] Prompt title.
+	 * @param [opts.default] Default value.
+	 * @param [opts.autocomplete] Array of autocomplete strings. REQUIRES INCLUSION OF THE TYPEAHEAD LIBRARY.
+	 * @param [opts.isCode] If the text is code.
+	 * @param [opts.isSkippable] If the prompt is skippable.
 	 * @return {Promise<String>} A promise which resolves to the string if the user entered one, or null otherwise.
 	 */
 	static pGetUserString (opts) {
 		opts = opts || {};
 		return new Promise(resolve => {
-			const $iptStr = $(`<input class="form-control mb-2" ${opts.default != null ? `value="${opts.default}"` : ""}>`)
+			const $iptStr = $(`<input class="form-control mb-2" type="text">`)
+				.val(opts.default)
 				.keydown(async evt => {
+					if (evt.key === "Escape") { $iptStr.blur(); return; }
+
 					if (opts.autocomplete) {
 						// prevent double-binding the return key if we have autocomplete enabled
 						await MiscUtil.pDelay(17); // arbitrary delay to allow dropdown to render (~1000/60, i.e. 1 60 FPS frame)
@@ -1220,21 +1860,66 @@ class InputUiUtil {
 					if (evt.which === 13) doClose(true);
 					evt.stopPropagation();
 				});
+			if (opts.isCode) $iptStr.addClass("code");
 			if (opts.autocomplete && opts.autocomplete.length) $iptStr.typeahead({source: opts.autocomplete});
-			const $btnOk = $(`<button class="btn btn-default">Enter</button>`)
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: opts.title || "Enter Text",
-				noMinHeight: true,
+				isMinHeight0: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
+					if (!isDataEntered) return resolve(null);
+					const raw = $iptStr.val();
+					return resolve(raw);
+				},
+			});
+			$iptStr.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
+			$iptStr.focus();
+			$iptStr.select();
+		});
+	}
+
+	/**
+	 * @param [opts] Options.
+	 * @param [opts.title] Prompt title.
+	 * @param [opts.buttonText] Prompt title.
+	 * @param [opts.default] Default value.
+	 * @param [opts.disabled] If the text area is disabled.
+	 * @param [opts.isCode] If the text is code.
+	 * @param [opts.isSkippable] If the prompt is skippable.
+	 * @return {Promise<String>} A promise which resolves to the string if the user entered one, or null otherwise.
+	 */
+	static pGetUserText (opts) {
+		opts = opts || {};
+		return new Promise(resolve => {
+			const $iptStr = $(`<textarea class="form-control mb-2 resize-vertical w-100" ${opts.disabled ? "disabled" : ""}></textarea>`)
+				.val(opts.default);
+			if (opts.isCode) $iptStr.addClass("code");
+			const $btnOk = $(`<button class="btn btn-primary mr-2">${opts.buttonText || "OK"}</button>`)
+				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
+			const {$modalInner, doClose} = UiUtil.getShowModal({
+				title: opts.title || "Enter Text",
+				isMinHeight0: true,
+				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
 					if (!isDataEntered) return resolve(null);
 					const raw = $iptStr.val();
 					if (!raw.trim()) return resolve(null);
 					else return resolve(raw);
-				}
+				},
 			});
 			$iptStr.appendTo($modalInner);
-			$$`<div class="flex-vh-center">${$btnOk}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 			$iptStr.focus();
 			$iptStr.select();
 		});
@@ -1244,26 +1929,32 @@ class InputUiUtil {
 	 * @param opts Options.
 	 * @param opts.title Prompt title.
 	 * @param opts.default Default value.
+	 * @param [opts.isSkippable] If the prompt is skippable.
 	 * @return {Promise<String>} A promise which resolves to the color if the user entered one, or null otherwise.
 	 */
 	static pGetUserColor (opts) {
 		opts = opts || {};
 		return new Promise(resolve => {
 			const $iptRgb = $(`<input class="form-control mb-2" ${opts.default != null ? `value="${opts.default}"` : ""} type="color">`);
-			const $btnOk = $(`<button class="btn btn-default">Confirm</button>`)
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: opts.title || "Choose Color",
-				noMinHeight: true,
+				isMinHeight0: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
 					if (!isDataEntered) return resolve(null);
 					const raw = $iptRgb.val();
 					if (!raw.trim()) return resolve(null);
 					else return resolve(raw);
-				}
+				},
 			});
 			$iptRgb.appendTo($modalInner);
-			$$`<div class="flex-vh-center">${$btnOk}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 			$iptRgb.focus();
 			$iptRgb.select();
 		});
@@ -1276,6 +1967,7 @@ class InputUiUtil {
 	 * @param [opts.default] Default angle.
 	 * @param [opts.stepButtons] Array of labels for quick-set buttons, which will be evenly spread around the clock.
 	 * @param [opts.step] Number of steps in the gauge (default 360; would be e.g. 12 for a "clock").
+	 * @param [opts.isSkippable] If the prompt is skippable.
 	 * @returns {Promise<number>} A promise which resolves to the number of degrees if the user pressed "Enter," or null otherwise.
 	 */
 	static pGetUserDirection (opts) {
@@ -1295,7 +1987,7 @@ class InputUiUtil {
 			let active = false;
 			let curAngle = Math.min(DEG_CIRCLE, opts.default) || 0;
 
-			const $arm = $(`<div class="ui-dir__arm"/>`);
+			const $arm = $(`<div class="ui-dir__arm"></div>`);
 			const handleAngle = () => $arm.css({transform: `rotate(${curAngle + 180}deg)`});
 			handleAngle();
 
@@ -1346,44 +2038,49 @@ class InputUiUtil {
 								left: x + CONTROLS_RADIUS - (BTN_STEP_SIZE / 2),
 								width: BTN_STEP_SIZE,
 								height: BTN_STEP_SIZE,
-								zIndex: 1002
+								zIndex: 1002,
 							})
 							.click(() => {
 								curAngle = SEG_ANGLE * i;
 								handleAngle();
-							})
+							}),
 					);
 				}
 
 				const $wrpInner = $$`<div class="flex-vh-center relative">${$btns}${$pad}</div>`
 					.css({
 						width: CONTROLS_RADIUS * 2,
-						height: CONTROLS_RADIUS * 2
+						height: CONTROLS_RADIUS * 2,
 					});
 
 				return $$`<div class="flex-vh-center">${$wrpInner}</div>`
 					.css({
 						width: (CONTROLS_RADIUS * 2) + BTN_STEP_SIZE + BORDER_PAD,
-						height: (CONTROLS_RADIUS * 2) + BTN_STEP_SIZE + BORDER_PAD
+						height: (CONTROLS_RADIUS * 2) + BTN_STEP_SIZE + BORDER_PAD,
 					})
 			})() : null;
 
-			const $btnOk = $(`<button class="btn btn-default">Confirm</button>`)
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: opts.title || "Select Direction",
-				noMinHeight: true,
+				isMinHeight0: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
 					$document.off(`mousemove.${evtId} touchmove${evtId} mouseup.${evtId} touchend${evtId} touchcancel${evtId}`);
 					if (!isDataEntered) return resolve(null);
 					if (curAngle < 0) curAngle += 360;
 					return resolve(curAngle); // TODO returning the step number is more useful if step is specified?
-				}
+				},
 			});
 			$$`<div class="flex-vh-center mb-3">
 				${$padOuter || $pad}
 			</div>`.appendTo($modalInner);
-			$$`<div class="flex-vh-center">${$btnOk}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-right pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 		});
 	}
 
@@ -1391,6 +2088,7 @@ class InputUiUtil {
 	 * @param [opts] Options.
 	 * @param [opts.title] Prompt title.
 	 * @param [opts.default] Default values. Should be an object of the form `{num, faces, bonus}`.
+	 * @param [opts.isSkippable] If the prompt is skippable.
 	 * @return {Promise<String>} A promise which resolves to a dice string if the user entered values, or null otherwise.
 	 */
 	static pGetUserDice (opts) {
@@ -1399,7 +2097,7 @@ class InputUiUtil {
 			const comp = BaseComponent.fromObject({
 				num: (opts.default && opts.default.num) || 1,
 				faces: (opts.default && opts.default.faces) || 6,
-				bonus: (opts.default && opts.default.bonus) || null
+				bonus: (opts.default && opts.default.bonus) || null,
 			});
 
 			comp.render = function ($parent) {
@@ -1408,6 +2106,7 @@ class InputUiUtil {
 				const $iptNum = ComponentUiUtil.$getIptInt(this, "num", 0, {$ele: $(`<input class="form-control input-xs form-control--minimal text-center mr-1">`)})
 					.appendTo($parent)
 					.keydown(evt => {
+						if (evt.key === "Escape") { $iptNum.blur(); return; }
 						// return key
 						if (evt.which === 13) doClose(true);
 						evt.stopPropagation();
@@ -1418,6 +2117,7 @@ class InputUiUtil {
 				const $iptBonus = $(`<input class="form-control input-xs form-control--minimal text-center">`)
 					.change(() => this._state.bonus = UiUtil.strToInt($iptBonus.val(), null, {fallbackOnNaN: null}))
 					.keydown(evt => {
+						if (evt.key === "Escape") { $iptBonus.blur(); return; }
 						// return key
 						if (evt.which === 13) doClose(true);
 						evt.stopPropagation();
@@ -1430,23 +2130,28 @@ class InputUiUtil {
 			};
 
 			comp.getAsString = function () {
-				return `{@dice ${this._state.num}d${this._state.faces}${this._state.bonus ? UiUtil.intToBonus(this._state.bonus) : ""}}`;
+				return `${this._state.num}d${this._state.faces}${this._state.bonus ? UiUtil.intToBonus(this._state.bonus) : ""}`;
 			};
 
-			const $btnOk = $(`<button class="btn btn-default">Enter</button>`)
+			const $btnOk = $(`<button class="btn btn-primary mr-2">OK</button>`)
 				.click(() => doClose(true));
+			const $btnCancel = $(`<button class="btn btn-default">Cancel</button>`)
+				.click(() => doClose(false));
+			const $btnSkip = !opts.isSkippable ? null : $(`<button class="btn btn-default ml-3">Skip</button>`)
+				.click(() => doClose(VeCt.SYM_UI_SKIP));
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: opts.title || "Enter Dice",
-				noMinHeight: true,
+				isMinHeight0: true,
 				cbClose: (isDataEntered) => {
+					if (typeof isDataEntered === "symbol") return resolve(isDataEntered);
 					if (!isDataEntered) return resolve(null);
 					return resolve(comp.getAsString());
-				}
+				},
 			});
 
 			comp.render($modalInner);
 
-			$$`<div class="flex-vh-center">${$btnOk}</div>`.appendTo($modalInner);
+			$$`<div class="flex-v-center flex-h-center pb-1 px-1">${$btnOk}${$btnCancel}${$btnSkip}</div>`.appendTo($modalInner);
 		});
 	}
 }
@@ -1475,19 +2180,24 @@ class DragReorderUiUtil {
 			dragMeta.on = false;
 			dragMeta.$wrap.remove();
 			dragMeta.$dummies.forEach($d => $d.remove());
+			$(document.body).off(`mouseup.drag__stop`);
 		};
 
 		const doDragRender = () => {
 			if (dragMeta.on) doDragCleanup();
 
+			$(document.body).on(`mouseup.drag__stop`, () => {
+				if (dragMeta.on) doDragCleanup();
+			});
+
 			dragMeta.on = true;
-			dragMeta.$wrap = $(`<div class="flex-col ui-drag__wrp-drag-block"/>`).appendTo(opts.$parent);
+			dragMeta.$wrap = $(`<div class="flex-col ui-drag__wrp-drag-block"></div>`).appendTo(opts.$parent);
 			dragMeta.$dummies = [];
 
 			const ids = opts.componentsParent[opts.componentsProp].map(it => it.id);
 
 			ids.forEach(id => {
-				const $dummy = $(`<div class="w-100 ${id === opts.componentId ? "ui-drag__wrp-drag-dummy--highlight" : "ui-drag__wrp-drag-dummy--lowlight"}"/>`)
+				const $dummy = $(`<div class="w-100 ${id === opts.componentId ? "ui-drag__wrp-drag-dummy--highlight" : "ui-drag__wrp-drag-dummy--lowlight"}"></div>`)
 					.height(getComponentById(id).height)
 					.mouseup(() => {
 						if (dragMeta.on) doDragCleanup();
@@ -1515,36 +2225,41 @@ class DragReorderUiUtil {
 	}
 
 	/**
-	 * @param comp Row component.
+	 * @param $fnGetRow Function which returns a $row element. Is a function instead of a value so it can be lazy-loaded later.
 	 * @param opts Options object.
 	 * @param opts.$parent
 	 * @param opts.swapRowPositions
-	 * @param [opts.childComponents]
-	 * @param [opts.getChildComponents]
+	 * @param [opts.$children] An array of row elements.
+	 * @param [opts.$getChildren] Should return an array as described in the "$children" option.
 	 */
-	static $getDragPadOpts (comp, opts) {
-		if (!opts.$parent || !opts.swapRowPositions || (!opts.childComponents && !opts.getChildComponents)) throw new Error("Missing required option(s)!");
+	static $getDragPadOpts ($fnGetRow, opts) {
+		if (!opts.$parent || !opts.swapRowPositions || (!opts.$children && !opts.$getChildren)) throw new Error("Missing required option(s)!");
 
 		const dragMeta = {};
 		const doDragCleanup = () => {
 			dragMeta.on = false;
 			dragMeta.$wrap.remove();
 			dragMeta.$dummies.forEach($d => $d.remove());
+			$(document.body).off(`mouseup.drag__stop`);
 		};
 
 		const doDragRender = () => {
 			if (dragMeta.on) doDragCleanup();
 
+			$(document.body).on(`mouseup.drag__stop`, () => {
+				if (dragMeta.on) doDragCleanup();
+			});
+
 			dragMeta.on = true;
-			dragMeta.$wrap = $(`<div class="flex-col ui-drag__wrp-drag-block"/>`).appendTo(opts.$parent);
+			dragMeta.$wrap = $(`<div class="flex-col ui-drag__wrp-drag-block"></div>`).appendTo(opts.$parent);
 			dragMeta.$dummies = [];
 
-			let childComponentsCur = opts.getChildComponents ? opts.getChildComponents() : opts.childComponents;
-			const ixRow = childComponentsCur.indexOf(comp);
+			const $children = opts.$getChildren ? opts.$getChildren() : opts.$children;
+			const ixRow = $children.indexOf($fnGetRow());
 
-			childComponentsCur.forEach((row, i) => {
-				const dimensions = {w: row.$row.outerWidth(true), h: row.$row.outerHeight(true)};
-				const $dummy = $(`<div class="${i === ixRow ? "ui-drag__wrp-drag-dummy--highlight" : "ui-drag__wrp-drag-dummy--lowlight"}"/>`)
+			$children.forEach(($child, i) => {
+				const dimensions = {w: $child.outerWidth(true), h: $child.outerHeight(true)};
+				const $dummy = $(`<div class="${i === ixRow ? "ui-drag__wrp-drag-dummy--highlight" : "ui-drag__wrp-drag-dummy--lowlight"}"></div>`)
 					.width(dimensions.w).height(dimensions.h)
 					.mouseup(() => {
 						if (dragMeta.on) doDragCleanup();
@@ -1568,15 +2283,15 @@ class DragReorderUiUtil {
 	}
 
 	/**
-	 * @param comp The component which will contain the drag pad. Must expose a ".$row" property (getter).
+	 * @param $fnGetRow Function which returns a $row element. Is a function instead of a value so it can be lazy-loaded later.
 	 * @param $parent Parent elements to attach row elements to. Should have (e.g.) "relative" CSS positioning.
-	 * @param parent Parent component which has a pod decomposable as {swapRowPositions, <childComponents|getChildComponents>}.
+	 * @param parent Parent component which has a pod decomposable as {swapRowPositions, <$children|$getChildren>}.
 	 * @return jQuery
 	 */
-	static $getDragPad2 (comp, $parent, parent) {
-		const {swapRowPositions, childComponents, getChildComponents} = parent;
-		const nxtOpts = {$parent, swapRowPositions, childComponents, getChildComponents};
-		return this.$getDragPadOpts(comp, nxtOpts)
+	static $getDragPad2 ($fnGetRow, $parent, parent) {
+		const {swapRowPositions, $children, $getChildren} = parent;
+		const nxtOpts = {$parent, swapRowPositions, $children, $getChildren};
+		return this.$getDragPadOpts($fnGetRow, nxtOpts)
 	}
 }
 
@@ -1594,54 +2309,60 @@ class SourceUiUtil {
 	 * @param options.cbConfirm Confirmation callback for inputting new sources.
 	 * @param options.cbConfirmExisting Confirmation callback for selecting existing sources.
 	 * @param options.cbCancel Cancellation callback.
-	 * @param options.mode (Optional) Mode to build in, either "edit" or "add". Defaults to "add".
+	 * @param options.mode (Optional) Mode to build in, "select", "edit" or "add". Defaults to "select".
 	 * @param options.source (Optional) Homebrew source object.
 	 * @param options.isRequired (Optional) True if a source must be selected.
 	 */
 	static render (options) {
 		options = SourceUiUtil._getValidOptions(options);
 		options.$parent.empty();
+		options.mode = options.mode || "select";
 
-		const isNewSource = options.mode !== "edit";
-		const isAddSource = options.mode === "add";
+		const isEditMode = options.mode === "edit";
 
 		let jsonDirty = false;
 		const $iptName = $(`<input class="form-control ui-source__ipt-named">`)
+			.keydown(evt => { if (evt.key === "Escape") $iptName.blur(); })
 			.change(() => {
-				if (!jsonDirty && isNewSource) $iptJson.val($iptName.val().replace(/[^-_a-zA-Z]/g, ""));
-				$iptName.removeClass("error-background");
+				if (!jsonDirty && !isEditMode) $iptJson.val($iptName.val().replace(/[^-_a-zA-Z]/g, ""));
+				$iptName.removeClass("form-control--error");
 			});
 		if (options.source) $iptName.val(options.source.full);
 		const $iptAbv = $(`<input class="form-control ui-source__ipt-named">`)
+			.keydown(evt => { if (evt.key === "Escape") $iptAbv.blur(); })
 			.change(() => {
-				$iptAbv.removeClass("error-background");
+				$iptAbv.removeClass("form-control--error");
 			});
 		if (options.source) $iptAbv.val(options.source.abbreviation);
-		const $iptJson = $(`<input class="form-control ui-source__ipt-named" ${isNewSource ? "" : "disabled"}>`)
+		const $iptJson = $(`<input class="form-control ui-source__ipt-named" ${isEditMode ? "disabled" : ""}>`)
+			.keydown(evt => { if (evt.key === "Escape") $iptJson.blur(); })
 			.change(() => {
 				jsonDirty = true;
-				$iptJson.removeClass("error-background");
+				$iptJson.removeClass("form-control--error");
 			});
 		if (options.source) $iptJson.val(options.source.json);
-		const $iptUrl = $(`<input class="form-control ui-source__ipt-named">`);
+		const $iptUrl = $(`<input class="form-control ui-source__ipt-named">`)
+			.keydown(evt => { if (evt.key === "Escape") $iptUrl.blur(); });
 		if (options.source) $iptUrl.val(options.source.url);
-		const $iptAuthors = $(`<input class="form-control ui-source__ipt-named">`);
+		const $iptAuthors = $(`<input class="form-control ui-source__ipt-named">`)
+			.keydown(evt => { if (evt.key === "Escape") $iptAuthors.blur(); });
 		if (options.source) $iptAuthors.val((options.source.authors || []).join(", "));
-		const $iptConverters = $(`<input class="form-control ui-source__ipt-named">`);
+		const $iptConverters = $(`<input class="form-control ui-source__ipt-named">`)
+			.keydown(evt => { if (evt.key === "Escape") $iptConverters.blur(); });
 		if (options.source) $iptConverters.val((options.source.convertedBy || []).join(", "));
 
-		const $btnConfirm = $(`<button class="btn btn-default">Confirm</button>`)
+		const $btnOk = $(`<button class="btn btn-primary">OK</button>`)
 			.click(() => {
 				let incomplete = false;
 				[$iptName, $iptAbv, $iptJson].forEach($ipt => {
 					const val = $ipt.val();
-					if (!val || !val.trim()) (incomplete = true) && $ipt.addClass("error-background");
+					if (!val || !val.trim()) (incomplete = true) && $ipt.addClass("form-control--error");
 				});
 				if (incomplete) return;
 
 				const jsonVal = $iptJson.val().trim();
-				if (isNewSource && BrewUtil.hasSourceJson(jsonVal)) {
-					$iptJson.addClass("error-background");
+				if (!isEditMode && BrewUtil.hasSourceJson(jsonVal)) {
+					$iptJson.addClass("form-control--error");
 					JqueryUtil.doToast({content: `The JSON identifier "${jsonVal}" already exists!`, type: "danger"});
 					return;
 				}
@@ -1652,16 +2373,15 @@ class SourceUiUtil {
 					full: $iptName.val().trim(),
 					url: $iptUrl.val().trim(),
 					authors: $iptAuthors.val().trim().split(",").map(it => it.trim()).filter(Boolean),
-					convertedBy: $iptConverters.val().trim().split(",").map(it => it.trim()).filter(Boolean)
+					convertedBy: $iptConverters.val().trim().split(",").map(it => it.trim()).filter(Boolean),
 				};
 
-				options.cbConfirm(source);
+				options.cbConfirm(source, options.mode !== "edit");
 			});
 
-		const $btnCancel = !options.isRequired && (isAddSource || !isNewSource) ? $(`<button class="btn btn-default mr-2">Cancel</button>`)
-			.click(() => {
-				options.cbCancel();
-			}) : null;
+		const $btnCancel = options.isRequired && !isEditMode
+			? null
+			: $(`<button class="btn btn-default ml-2">Cancel</button>`).click(() => options.cbCancel());
 
 		const $btnUseExisting = $(`<button class="btn btn-default">Use an Existing Source</button>`)
 			.click(() => {
@@ -1669,11 +2389,11 @@ class SourceUiUtil {
 				$stageExisting.show();
 
 				// cleanup
-				[$iptName, $iptAbv, $iptJson].forEach($ipt => $ipt.removeClass("error-background"));
+				[$iptName, $iptAbv, $iptJson].forEach($ipt => $ipt.removeClass("form-control--error"));
 			});
 
 		const $stageInitial = $$`<div class="h-100 w-100 flex-vh-center"><div>
-			<h3 class="text-center">${isNewSource ? "Add a Homebrew Source" : "Edit Homebrew Source"}</h3>
+			<h3 class="text-center">${isEditMode ? "Edit Homebrew Source" : "Add a Homebrew Source"}</h3>
 			<div class="row ui-source__row mb-2"><div class="col-12 flex-v-center">
 				<span class="mr-2 ui-source__name help" title="The name or title for the homebrew you wish to create. This could be the name of a book or PDF; for example, 'Monster Manual'">Title</span>
 				${$iptName}
@@ -1698,36 +2418,43 @@ class SourceUiUtil {
 				<span class="mr-2 ui-source__name help" title="A comma-separated list of people who converted the homebrew to 5etools' format, e.g. 'John Doe, Joe Bloggs'">Converted By</span>
 				${$iptConverters}
 			</div></div>
-			<div class="text-center mb-2">${$btnCancel}${$btnConfirm}</div>
-			
-			${isNewSource && !isAddSource && BrewUtil.homebrewMeta.sources && BrewUtil.homebrewMeta.sources.length ? $$`<div class="flex-vh-center mb-3 mt-3"><span class="ui-source__divider"/>or<span class="ui-source__divider"/></div>
+			<div class="text-center mb-2">${$btnOk}${$btnCancel}</div>
+
+			${!isEditMode && BrewUtil.homebrewMeta.sources && BrewUtil.homebrewMeta.sources.length ? $$`<div class="flex-vh-center mb-3 mt-3"><span class="ui-source__divider"></span>or<span class="ui-source__divider"></span></div>
 			<div class="flex-vh-center">${$btnUseExisting}</div>` : ""}
 		</div></div>`.appendTo(options.$parent);
 
 		const $selExisting = $$`<select class="form-control input-sm">
 			<option disabled>Select</option>
 			${(BrewUtil.homebrewMeta.sources || []).sort((a, b) => SortUtil.ascSortLower(a.full, b.full)).map(s => `<option value="${s.json.escapeQuotes()}">${s.full.escapeQuotes()}</option>`)}
-		</select>`.change(() => $selExisting.removeClass("error-background"));
+		</select>`.change(() => $selExisting.removeClass("form-control--error"));
 		$selExisting[0].selectedIndex = 0;
 
 		const $btnConfirmExisting = $(`<button class="btn btn-default btn-sm">Confirm</button>`)
 			.click(() => {
 				if ($selExisting[0].selectedIndex !== 0) {
-					const jsonSource = $selExisting.val();
-					const source = BrewUtil.sourceJsonToSource(jsonSource);
+					const sourceJson = $selExisting.val();
+					const source = BrewUtil.sourceJsonToSource(sourceJson);
 					options.cbConfirmExisting(source);
 
 					// cleanup
 					$selExisting[0].selectedIndex = 0;
 					$stageExisting.hide();
 					$stageInitial.show();
-				} else $selExisting.addClass("error-background");
+				} else $selExisting.addClass("form-control--error");
+			});
+
+		const $btnBackExisting = $(`<button class="btn btn-default btn-sm mr-2">Back</button>`)
+			.click(() => {
+				$selExisting[0].selectedIndex = 0;
+				$stageExisting.hide();
+				$stageInitial.show();
 			});
 
 		const $stageExisting = $$`<div class="h-100 w-100 flex-vh-center" style="display: none;"><div>
 			<h3 class="text-center">Select a Homebrew Source</h3>
 			<div class="row mb-2"><div class="col-12 flex-vh-center">${$selExisting}</div></div>
-			<div class="row"><div class="col-12 flex-vh-center">${$btnConfirmExisting}</div></div>
+			<div class="row"><div class="col-12 flex-vh-center">${$btnBackExisting}${$btnConfirmExisting}</div></div>
 		</div></div>`.appendTo(options.$parent);
 	}
 }
@@ -1753,13 +2480,13 @@ class BaseComponent extends ProxyBase {
 	}
 
 	_setState (toState) {
-		this._proxyAssign("state", "_state", "__state", toState);
+		this._proxyAssign("state", "_state", "__state", toState, true);
 	}
 
 	_getState () { return MiscUtil.copy(this.__state) }
 
 	getPod () {
-		return {
+		this.__pod = this.__pod || {
 			get: (prop) => this._state[prop],
 			set: (prop, val) => this._state[prop] = val,
 			delete: (prop) => delete this._state[prop],
@@ -1769,8 +2496,12 @@ class BaseComponent extends ProxyBase {
 			triggerCollectionUpdate: (prop) => this._triggerCollectionUpdate(prop),
 			setState: (state) => this._setState(state),
 			getState: () => this._getState(),
-			component: this
-		}
+			assign: (toObj, isOverwrite) => this._proxyAssign("state", "_state", "__state", toObj, isOverwrite),
+			pLock: lockName => this._pLock(lockName),
+			unlock: lockName => this._unlock(lockName),
+			component: this,
+		};
+		return this.__pod;
 	}
 
 	// to be overridden as required
@@ -1778,7 +2509,7 @@ class BaseComponent extends ProxyBase {
 
 	getBaseSaveableState () {
 		return {
-			state: MiscUtil.copy(this.__state)
+			state: MiscUtil.copy(this.__state),
 		};
 	}
 
@@ -1787,20 +2518,34 @@ class BaseComponent extends ProxyBase {
 	}
 
 	/**
-	 * Asynchronous version available below.
-	 * @param prop The state property.
-	 * @param cbExists Function to run on existing render meta. Arguments are `rendered, item, i`.
-	 * @param cbNotExists Function to run which generates existing render meta. Arguments are `item, i`.
-	 * @param [opts] Options object.
-	 * @param [opts.isDiffMode] If a diff of the state should be taken/checked before updating renders.
+	 * @param opts Options object.
+	 * @param opts.prop The state property.
+	 * @param [opts.namespace] The render namespace.
 	 */
-	_renderCollection (prop, cbExists, cbNotExists, opts) {
+	_getRenderedCollection (opts) {
+		opts = opts || {};
+		const renderedLookupProp = opts.namespace ? `${opts.namespace}.${opts.prop}` : opts.prop;
+		return (this.__rendered[renderedLookupProp] = this.__rendered[renderedLookupProp] || {});
+	}
+
+	/**
+	 * Asynchronous version available below.
+	 * @param opts Options object.
+	 * @param opts.prop The state property.
+	 * @param [opts.fnDeleteExisting] Function to run on deleted render meta. Arguments are `rendered, item`.
+	 * @param opts.fnUpdateExisting Function to run on existing render meta. Arguments are `rendered, item`.
+	 * @param opts.fnGetNew Function to run which generates existing render meta. Arguments are `item`.
+	 * @param [opts.isDiffMode] If a diff of the state should be taken/checked before updating renders.
+	 * @param [opts.namespace] A namespace to store these renders under. Useful if multiple renders are being made from
+	 *        the same collection.
+	 */
+	_renderCollection (opts) {
 		opts = opts || {};
 
-		const rendered = (this.__rendered[prop] = this.__rendered[prop] || {});
+		const rendered = this._getRenderedCollection(opts);
 		const toDelete = new Set(Object.keys(rendered));
 
-		(this._state[prop] || []).forEach((it, i) => {
+		(this._state[opts.prop] || []).forEach((it, i) => {
 			if (it.id == null) throw new Error(`Collection item did not have an ID!`);
 			const meta = rendered[it.id];
 
@@ -1815,9 +2560,13 @@ class BaseComponent extends ProxyBase {
 				}
 
 				meta.data = it; // update any existing pointers
-				cbExists(meta, it, i);
+				opts.fnUpdateExisting(meta, it, i);
 			} else {
-				const meta = cbNotExists(it, i);
+				const meta = opts.fnGetNew(it, i);
+
+				// If the "get new" function returns null, skip rendering this entity
+				if (meta == null) return;
+
 				meta.data = it;
 				if (!meta.$wrpRow) throw new Error(`A "$wrpRow" property is required in order for deletes!`);
 
@@ -1827,29 +2576,37 @@ class BaseComponent extends ProxyBase {
 			}
 		});
 
-		this._renderCollection_doDeletes(rendered, toDelete);
+		toDelete.forEach(id => {
+			const meta = rendered[id];
+			meta.$wrpRow.remove();
+			delete rendered[id];
+			if (opts.fnDeleteExisting) opts.fnDeleteExisting(meta);
+		});
 	}
 
 	/**
-	 * Synchronous version available below.
-	 * @param prop The state property.
-	 * @param cbExists Function to run on existing render meta. Arguments are `rendered, item, i`.
-	 * @param cbNotExists Function to run which generates existing render meta. Arguments are `item, i`.
+	 * Synchronous version available above.
 	 * @param [opts] Options object.
+	 * @param opts.prop The state property.
+	 * @param [opts.pFnDeleteExisting] Function to run on deleted render meta. Arguments are `rendered, item`.
+	 * @param opts.pFnUpdateExisting Function to run on existing render meta. Arguments are `rendered, item`.
+	 * @param opts.pFnGetNew Function to run which generates existing render meta. Arguments are `item`.
 	 * @param [opts.isDiffMode] If updates should be run in "diff" mode (i.e. no update is run if nothing has changed).
 	 * @param [opts.isMultiRender] If multiple renders will be produced.
 	 * @param [opts.additionalCaches] Additional cache objects to be cleared on entity delete. Should be objects with
 	 *        entity IDs as keys.
+	 * @param [opts.namespace] A namespace to store these renders under. Useful if multiple renders are being made from
+	 *        the same collection.
 	 */
-	async _pRenderCollection (prop, cbExists, cbNotExists, opts) {
+	async _pRenderCollection (opts) {
 		opts = opts || {};
 
-		const rendered = (this.__rendered[prop] = this.__rendered[prop] || {});
-		const entities = this._state[prop];
-		return this._pRenderCollection_doRender(rendered, entities, cbExists, cbNotExists, opts);
+		const rendered = this._getRenderedCollection(opts);
+		const entities = this._state[opts.prop];
+		return this._pRenderCollection_doRender(rendered, entities, opts);
 	}
 
-	async _pRenderCollection_doRender (rendered, entities, cbExists, cbNotExists, opts) {
+	async _pRenderCollection_doRender (rendered, entities, opts) {
 		opts = opts || {};
 
 		const toDelete = new Set(Object.keys(rendered));
@@ -1871,12 +2628,12 @@ class BaseComponent extends ProxyBase {
 					else continue;
 				}
 
-				const nxtMeta = await cbExists(meta, it, i);
+				const nxtMeta = await opts.pFnUpdateExisting(meta, it);
 				// Overwrite the existing renders in multi-render mode
 				//    Otherwise, just ignore the result--single renders never modify their render
 				if (opts.isMultiRender) rendered[it.id] = nxtMeta;
 			} else {
-				const meta = await cbNotExists(it, i);
+				const meta = await opts.pFnGetNew(it);
 				// If the generator decides there's nothing to render, skip this item
 				if (meta == null) continue;
 
@@ -1889,38 +2646,39 @@ class BaseComponent extends ProxyBase {
 			}
 		}
 
-		return this._renderCollection_doDeletes(rendered, toDelete, opts);
-	}
-
-	_renderCollection_doDeletes (rendered, toDelete, opts) {
-		opts = opts || {};
-
-		toDelete.forEach(id => {
+		for (const id of toDelete) {
 			const meta = rendered[id];
 			if (opts.isMultiRender) meta.forEach(it => it.$wrpRow.remove());
 			else meta.$wrpRow.remove();
 			if (opts.additionalCaches) opts.additionalCaches.forEach(it => delete it[id]);
 			delete rendered[id];
-		});
+			if (opts.pFnDeleteExisting) await opts.pFnDeleteExisting(meta);
+		}
 	}
 
 	/**
 	 * Detach (and thus preserve) rendered collection elements so they can be re-used later.
 	 * @param prop The state property.
+	 * @param [namespace] A namespace to store these renders under. Useful if multiple renders are being made from
+	 *        the same collection.
 	 */
-	_detachCollection (prop) {
-		const rendered = (this.__rendered[prop] = this.__rendered[prop] || {});
+	_detachCollection (prop, namespace = null) {
+		const renderedLookupProp = namespace ? `${namespace}.${prop}` : prop;
+		const rendered = (this.__rendered[renderedLookupProp] = this.__rendered[renderedLookupProp] || {});
 		Object.values(rendered).forEach(it => it.$wrpRow.detach());
 	}
 
 	/**
 	 * Wipe any rendered collection elements, and reset the render cache.
 	 * @param prop The state property.
+	 * @param [namespace] A namespace to store these renders under. Useful if multiple renders are being made from
+	 *        the same collection.
 	 */
-	_resetCollectionRenders (prop) {
-		const rendered = (this.__rendered[prop] = this.__rendered[prop] || {});
+	_resetCollectionRenders (prop, namespace = null) {
+		const renderedLookupProp = namespace ? `${namespace}.${prop}` : prop;
+		const rendered = (this.__rendered[renderedLookupProp] = this.__rendered[renderedLookupProp] || {});
 		Object.values(rendered).forEach(it => it.$wrpRow.remove());
-		delete this.__rendered[prop];
+		delete this.__rendered[renderedLookupProp];
 	}
 
 	render () { throw new Error("Unimplemented!"); }
@@ -1935,7 +2693,7 @@ class BaseComponent extends ProxyBase {
 		const lock = new Promise(resolve => unlock = resolve);
 		this.__locks[lockName] = {
 			lock,
-			unlock
+			unlock,
 		}
 	}
 
@@ -1948,6 +2706,7 @@ class BaseComponent extends ProxyBase {
 	}
 
 	_triggerCollectionUpdate (prop) {
+		if (!this._state[prop]) return;
 		this._state[prop] = [...this._state[prop]];
 	}
 
@@ -1970,12 +2729,105 @@ class BaseComponent extends ProxyBase {
 		return comp;
 	}
 
+	static fromObjectNoMod (obj) { return this.fromObject(obj, ...Object.keys(obj)); }
+
 	toObject () {
 		const cpy = MiscUtil.copy(this.__state);
 		Object.entries(cpy).forEach(([k, v]) => {
 			if (v != null && v instanceof Array && v.every(it => it && it.id)) cpy[k] = BaseComponent._fromCollection(v);
 		});
 		return cpy;
+	}
+}
+
+class RenderableCollectionBase {
+	/**
+	 * @param comp
+	 * @param prop
+	 * @param [opts]
+	 * @param [opts.namespace]
+	 * @param [opts.isDiffMode]
+	 */
+	constructor (comp, prop, opts) {
+		opts = opts || {};
+		this._comp = comp;
+		this._prop = prop;
+		this._namespace = opts.namespace;
+		this._isDiffMode = opts.isDiffMode;
+	}
+
+	getNewRender (entity, i) {
+		throw new Error(`Unimplemented!`);
+	}
+
+	doUpdateExistingRender (renderedMeta, entity, i) {
+		throw new Error(`Unimplemented!`);
+	}
+
+	doDeleteExistingRender (renderedMeta) {
+		// No-op
+	}
+
+	/**
+	 * @param [opts] Temporary override options.
+	 * @param [opts.isDiffMode]
+	 */
+	render (opts) {
+		opts = opts || {};
+		this._comp._renderCollection({
+			prop: this._prop,
+			fnUpdateExisting: (rendered, source, i) => this.doUpdateExistingRender(rendered, source, i),
+			fnGetNew: (entity, i) => this.getNewRender(entity, i),
+			fnDeleteExisting: (rendered) => this.doDeleteExistingRender(rendered),
+			namespace: this._namespace,
+			isDiffMode: opts.isDiffMode != null ? opts.isDiffMode : this._isDiffMode,
+		});
+	}
+}
+
+class RenderableCollectionAsyncBase {
+	/**
+	 * @param comp
+	 * @param prop
+	 * @param [opts]
+	 * @param [opts.namespace]
+	 * @param [opts.isDiffMode]
+	 * @param [opts.isMultiRender]
+	 * @param [opts.additionalCaches]
+	 */
+	constructor (comp, prop, opts) {
+		opts = opts || {};
+		this._comp = comp;
+		this._prop = prop;
+		this._namespace = opts.namespace;
+		this._isDiffMode = opts.isDiffMode;
+		this._isMultiRender = opts.isMultiRender;
+		this._additionalCaches = opts.additionalCaches;
+	}
+
+	pGetNewRender (entity, i) {
+		throw new Error(`Unimplemented!`);
+	}
+
+	pDoUpdateExistingRender (renderedMeta, entity, i) {
+		throw new Error(`Unimplemented!`);
+	}
+
+	/**
+	 * @param [opts] Temporary override options.
+	 * @param [opts.isDiffMode]
+	 */
+	render (opts) {
+		opts = opts || {};
+		this._comp._pRenderCollection({
+			prop: this._prop,
+			fnUpdateExisting: (rendered, source, i) => this.pGetNewRender(rendered, source, i),
+			fnGetNew: (entity, i) => this.pDoUpdateExistingRender(entity, i),
+			namespace: this._namespace,
+			isDiffMode: opts.isDiffMode != null ? opts.isDiffMode : this._isDiffMode,
+			isMultiRender: this._isMultiRender,
+			additionalCaches: this._additionalCaches,
+		});
 	}
 }
 
@@ -2043,7 +2895,7 @@ class BaseLayeredComponent extends BaseComponent {
 	getBaseSaveableState () {
 		return {
 			state: MiscUtil.copy(this.__state),
-			layers: MiscUtil.copy(this._layers.map(l => l.getSaveableState()))
+			layers: MiscUtil.copy(this._layers.map(l => l.getSaveableState())),
 		};
 	}
 
@@ -2053,7 +2905,7 @@ class BaseLayeredComponent extends BaseComponent {
 	}
 
 	getPod () {
-		return {
+		this.__pod = this.__pod || {
 			...super.getPod(),
 
 			addHookDeep: (prop, hook) => this._addHookDeep(prop, hook),
@@ -2068,8 +2920,9 @@ class BaseLayeredComponent extends BaseComponent {
 				return l;
 			},
 			removeLayer: (layer) => this._removeLayer(layer),
-			layers: this._layers // FIXME avoid passing this directly to the child
-		}
+			layers: this._layers, // FIXME avoid passing this directly to the child
+		};
+		return this.__pod;
 	}
 }
 
@@ -2093,7 +2946,7 @@ class CompLayer extends ProxyBase {
 	getSaveableState () {
 		return {
 			name: this._name,
-			data: MiscUtil.copy(this.__data)
+			data: MiscUtil.copy(this.__data),
 		}
 	}
 
@@ -2206,13 +3059,17 @@ class ComponentUiUtil {
 	 * @param [fallbackEmpty] Fallback number if string is empty.
 	 * @param [opts] Options Object.
 	 * @param [opts.$ele] Element to use.
+	 * @param [opts.html] HTML to convert to element to use.
 	 * @param [opts.max] Max allowed return value.
 	 * @param [opts.min] Min allowed return value.
 	 * @param [opts.offset] Offset to add to value displayed.
 	 * @param [opts.padLength] Number of digits to pad the number to.
 	 * @param [opts.fallbackOnNaN] Return value if not a number.
 	 * @param [opts.isAllowNull] If an empty input should be treated as null.
+	 * @param [opts.asMeta] If a meta-object should be returned containing the hook and the checkbox.
 	 * @param [opts.hookTracker] Object in which to track hook.
+	 * @param [opts.decorationLeft] Decoration to be added to the left-hand-side of the input. Can be `"ticker"` or `"clear"`. REQUIRES `asMeta` TO BE SET.
+	 * @param [opts.decorationRight] Decoration to be added to the right-hand-side of the input. Can be `"ticker"` or `"clear"`. REQUIRES `asMeta` TO BE SET.
 	 * @return {JQuery}
 	 */
 	static $getIptInt (component, prop, fallbackEmpty = 0, opts) {
@@ -2225,12 +3082,16 @@ class ComponentUiUtil {
 	 * @param [fallbackEmpty] Fallback number if string is empty.
 	 * @param [opts] Options Object.
 	 * @param [opts.$ele] Element to use.
+	 * @param [opts.html] HTML to convert to element to use.
 	 * @param [opts.max] Max allowed return value.
 	 * @param [opts.min] Min allowed return value.
 	 * @param [opts.offset] Offset to add to value displayed.
 	 * @param [opts.padLength] Number of digits to pad the number to.
 	 * @param [opts.fallbackOnNaN] Return value if not a number.
 	 * @param [opts.isAllowNull] If an empty input should be treated as null.
+	 * @param [opts.asMeta] If a meta-object should be returned containing the hook and the checkbox.
+	 * @param [opts.decorationLeft] Decoration to be added to the left-hand-side of the input. Can be `"ticker"` or `"clear"`. REQUIRES `asMeta` TO BE SET.
+	 * @param [opts.decorationRight] Decoration to be added to the right-hand-side of the input. Can be `"ticker"` or `"clear"`. REQUIRES `asMeta` TO BE SET.
 	 * @return {JQuery}
 	 */
 	static $getIptNumber (component, prop, fallbackEmpty = 0, opts) {
@@ -2241,13 +3102,30 @@ class ComponentUiUtil {
 		opts = opts || {};
 		opts.offset = opts.offset || 0;
 
-		const $ipt = (opts.$ele || $(`<input class="form-control input-xs form-control--minimal text-right" type="search">`))
+		const $ipt = (opts.$ele || $(opts.html || `<input class="form-control input-xs form-control--minimal text-right">`)).disableSpellcheck()
+			.keydown(evt => { if (evt.key === "Escape") $ipt.blur(); })
 			.change(() => {
-				if (opts.isAllowNull) {
-					const raw = $ipt.val().trim();
-					if (!raw) return component._state[prop] = null;
+				const raw = $ipt.val().trim();
+
+				if (opts.isAllowNull && !raw) return component._state[prop] = null;
+
+				if (raw.startsWith("=")) {
+					// if it starts with "=", force-set to the value provided
+					component._state[prop] = fnConvert(raw.slice(1), fallbackEmpty, opts) - opts.offset;
+				} else {
+					// otherwise, try to modify the previous value
+					const mUnary = /^[-+/*^]/.exec(raw);
+					if (mUnary) {
+						const cur = component._state[prop];
+						let proc = raw;
+						proc = proc.slice(1).trim();
+						const mod = fnConvert(proc, fallbackEmpty, opts);
+						const full = `${cur}${mUnary[0]}${mod}`;
+						component._state[prop] = fnConvert(full, fallbackEmpty, opts) - opts.offset;
+					} else {
+						component._state[prop] = fnConvert(raw, fallbackEmpty, opts) - opts.offset;
+					}
 				}
-				component._state[prop] = fnConvert($ipt.val(), fallbackEmpty, opts) - opts.offset;
 			});
 		const hook = () => {
 			if (opts.isAllowNull && component._state[prop] == null) {
@@ -2259,7 +3137,9 @@ class ComponentUiUtil {
 		if (opts.hookTracker) ComponentUiUtil.trackHook(opts.hookTracker, prop, hook);
 		component._addHookBase(prop, hook);
 		hook();
-		return $ipt;
+
+		if (opts.asMeta) return this._getIptDecoratedMeta(component, prop, $ipt, hook, opts);
+		else return $ipt;
 	}
 
 	/**
@@ -2267,23 +3147,112 @@ class ComponentUiUtil {
 	 * @param prop Component to hook on.
 	 * @param [opts] Options Object.
 	 * @param [opts.$ele] Element to use.
+	 * @param [opts.html] HTML to convert to element to use.
 	 * @param [opts.isNoTrim] If the text should not be trimmed.
 	 * @param [opts.isAllowNull] If null should be allowed (and preferred) for empty inputs
 	 * @param [opts.asMeta] If a meta-object should be returned containing the hook and the checkbox.
-	 * @return {JQuery}
+	 * @param [opts.autocomplete] Array of autocomplete strings. REQUIRES INCLUSION OF THE TYPEAHEAD LIBRARY.
+	 * @param [opts.decorationLeft] Decoration to be added to the left-hand-side of the input. Can be `"search"` or `"clear"`. REQUIRES `asMeta` TO BE SET.
+	 * @param [opts.decorationRight] Decoration to be added to the right-hand-side of the input. Can be `"search"` or `"clear"`. REQUIRES `asMeta` TO BE SET.
 	 */
 	static $getIptStr (component, prop, opts) {
 		opts = opts || {};
 
-		const $ipt = (opts.$ele || $(`<input class="form-control input-xs form-control--minimal" type="search">`))
-			.change(() => {
+		// Validate options
+		if ((opts.decorationLeft || opts.decorationRight) && !opts.asMeta) throw new Error(`Input must be created with "asMeta" option`);
+
+		const $ipt = (opts.$ele || $(opts.html || `<input class="form-control input-xs form-control--minimal">`))
+			.keydown(evt => { if (evt.key === "Escape") $ipt.blur(); })
+			.disableSpellcheck();
+		UiUtil.bindTypingEnd({
+			$ipt,
+			fnKeyup: () => {
 				const nxtVal = opts.isNoTrim ? $ipt.val() : $ipt.val().trim();
 				component._state[prop] = opts.isAllowNull && !nxtVal ? null : nxtVal;
-			});
-		const hook = () => $ipt.val(component._state[prop]);
+			},
+		});
+
+		if (opts.autocomplete && opts.autocomplete.length) $ipt.typeahead({source: opts.autocomplete});
+		const hook = () => {
+			if (component._state[prop] == null) $ipt.val(null);
+			else {
+				// If the only difference is start/end whitespace, leave it; otherwise, adding spaces is frustrating
+				if ($ipt.val().trim() !== component._state[prop]) $ipt.val(component._state[prop]);
+			}
+		};
 		component._addHookBase(prop, hook);
 		hook();
-		return opts.asMeta ? ({$ipt, unhook: () => component._removeHookBase(prop, hook)}) : $ipt;
+
+		if (opts.asMeta) return this._getIptDecoratedMeta(component, prop, $ipt, hook, opts);
+		else return $ipt;
+	}
+
+	static _getIptDecoratedMeta (component, prop, $ipt, hook, opts) {
+		const out = {$ipt, unhook: () => component._removeHookBase(prop, hook)};
+
+		if (opts.decorationLeft || opts.decorationRight) {
+			let $decorLeft;
+			let $decorRight;
+
+			if (opts.decorationLeft) {
+				$ipt.addClass(`ui-ideco__ipt ui-ideco__ipt--left`);
+				$decorLeft = ComponentUiUtil._$getDecor(component, prop, $ipt, opts.decorationLeft, "left", opts);
+			}
+
+			if (opts.decorationRight) {
+				$ipt.addClass(`ui-ideco__ipt ui-ideco__ipt--right`);
+				$decorRight = ComponentUiUtil._$getDecor(component, prop, $ipt, opts.decorationRight, "right", opts);
+			}
+
+			out.$wrp = $$`<div class="relative w-100">${$ipt}${$decorLeft}${$decorRight}</div>`
+		}
+
+		return out;
+	}
+
+	static _$getDecor (component, prop, $ipt, decorType, side, opts) {
+		switch (decorType) {
+			case "search": {
+				return $(`<div class="ui-ideco__wrp ui-ideco__wrp--${side} no-events flex-vh-center"><span class="glyphicon glyphicon-search"></span></div>`);
+			}
+			case "clear": {
+				return $(`<div class="ui-ideco__wrp ui-ideco__wrp--${side} flex-vh-center clickable" title="Clear"><span class="glyphicon glyphicon-remove"></span></div>`)
+					.click(() => $ipt.val("").change().keydown().keyup());
+			}
+			case "ticker": {
+				const isValidValue = val => {
+					if (opts.max != null && val > opts.max) return false;
+					if (opts.min != null && val < opts.min) return false;
+					return true;
+				};
+
+				const handleClick = (delta) => {
+					// TODO(future) this should be run first to evaluate any lingering expressions in the input, but it
+					//  breaks when the number is negative, as we need to add a "=" to the front of the input before
+					//  evaluating
+					// $ipt.change();
+					const nxt = component._state[prop] + delta;
+					if (!isValidValue(nxt)) return;
+					component._state[prop] = nxt;
+					$ipt.focus();
+				};
+
+				const $btnUp = $(`<button class="btn btn-default ui-ideco__btn-ticker bold no-select">+</button>`)
+					.click(() => handleClick(1));
+
+				const $btnDown = $(`<button class="btn btn-default ui-ideco__btn-ticker bold no-select">\u2012</button>`)
+					.click(() => handleClick(-1));
+
+				return $$`<div class="ui-ideco__wrp ui-ideco__wrp--${side} flex-vh-center flex-col">
+					${$btnUp}
+					${$btnDown}
+				</div>`;
+			}
+			case "spacer": {
+				return "";
+			}
+			default: throw new Error(`Unimplemented!`);
+		}
 	}
 
 	/**
@@ -2296,7 +3265,8 @@ class ComponentUiUtil {
 	static $getIptEntries (component, prop, opts) {
 		opts = opts || {};
 
-		const $ipt = (opts.$ele || $(`<textarea class="form-control input-xs form-control--minimal resize-vertical"/>`))
+		const $ipt = (opts.$ele || $(`<textarea class="form-control input-xs form-control--minimal resize-vertical"></textarea>`))
+			.keydown(evt => { if (evt.key === "Escape") $ipt.blur(); })
 			.change(() => component._state[prop] = UiUtil.getTextAsEntries($ipt.val().trim()));
 		const hook = () => $ipt.val(UiUtil.getEntriesAsText(component._state[prop]));
 		hook();
@@ -2313,7 +3283,7 @@ class ComponentUiUtil {
 	static $getIptColor (component, prop, opts) {
 		opts = opts || {};
 
-		const $ipt = (opts.$ele || $(`<input class="form-control input-xs form-control--minimal" type="color">`))
+		const $ipt = (opts.$ele || $(`<input class="form-control input-xs form-control--minimal ui__ipt-color" type="color">`))
 			.change(() => component._state[prop] = $ipt.val());
 		const hook = () => $ipt.val(component._state[prop]);
 		component._addHookBase(prop, hook);
@@ -2326,22 +3296,35 @@ class ComponentUiUtil {
 	 * @param prop Component to hook on.
 	 * @param [opts] Options Object.
 	 * @param [opts.$ele] Element to use.
+	 * @param [opts.html] HTML to convert to element to use.
 	 * @param [opts.text] Button text, if element is not specified.
 	 * @param [opts.fnHookPost] Function to run after primary hook.
 	 * @param [opts.stateName] State name.
 	 * @param [opts.stateProp] State prop.
+	 * @param [opts.isInverted] If the toggle display should be inverted.
+	 * @param [opts.activeClass] CSS class to use when setting the button as "active."
+	 * @param [opts.activeTitle] Title to use when setting the button as "active."
+	 * @param [opts.inactiveTitle] Title to use when setting the button as "active."
 	 * @return {JQuery}
 	 */
 	static $getBtnBool (component, prop, opts) {
 		opts = opts || {};
 
+		if (opts.html) opts.$ele = $(opts.html);
+
+		const activeClass = opts.activeClass || "active";
 		const stateName = opts.stateName || "state";
 		const stateProp = opts.stateProp || "_state";
 
 		const $btn = (opts.$ele || $(`<button class="btn btn-xs btn-default">${opts.text || "Toggle"}</button>`))
-			.click(() => component[stateProp][prop] = !component[stateProp][prop]);
+			.click(() => component[stateProp][prop] = !component[stateProp][prop])
+			.contextmenu(evt => {
+				evt.preventDefault();
+				component[stateProp][prop] = !component[stateProp][prop];
+			});
 		const hook = () => {
-			$btn.toggleClass("active", !!component[stateProp][prop]);
+			$btn.toggleClass(activeClass, opts.isInverted ? !component[stateProp][prop] : !!component[stateProp][prop]);
+			if (opts.activeTitle || opts.inactiveTitle) $btn.title(component[stateProp][prop] ? (opts.activeTitle || "") : (opts.inactiveTitle || ""));
 			if (opts.fnHookPost) opts.fnHookPost(component[stateProp][prop]);
 		};
 		component._addHook(stateName, prop, hook);
@@ -2361,6 +3344,9 @@ class ComponentUiUtil {
 		opts = opts || {};
 
 		const $cb = (opts.$ele || $(`<input type="checkbox">`))
+			.keydown(evt => {
+				if (evt.key === "Escape") $cb.blur();
+			})
 			.change(() => component._state[prop] = $cb.prop("checked"));
 		const hook = () => $cb.prop("checked", !!component._state[prop]);
 		component._addHookBase(prop, hook);
@@ -2370,33 +3356,175 @@ class ComponentUiUtil {
 	}
 
 	/**
+	 * A select2-style dropdown.
+	 * @param comp An instance of a class which extends BaseComponent.
+	 * @param prop Component to hook on.
+	 * @param opts Options Object.
+	 * @param opts.values Values to display.
+	 * @param [opts.$ele] Element to use.
+	 * @param [opts.html] HTML to convert to element to use.
+	 * @param [opts.isAllowNull] If null is allowed.
+	 * @param [opts.fnDisplay] Value display function.
+	 * @param [opts.displayNullAs] If null values are allowed, display them as this string.
+	 * @param [opts.asMeta] If a meta-object should be returned containing the hook and the select.
+	 * @return {JQuery}
+	 */
+	static $getSelSearchable (comp, prop, opts) {
+		opts = opts || {};
+
+		const $iptDisplay = (opts.$ele || $(opts.html || `<input class="form-control input-xs form-control--minimal">`))
+			.addClass("ui-sel2__ipt-display pr-1")
+			.attr("tabindex", "-1")
+			.click(() => $iptSearch.focus().select())
+			.disableSpellcheck();
+
+		const handleSearchChange = () => {
+			const cleanTerm = this._$getSelSearchable_getSearchString($iptSearch.val());
+			metaOptions.forEach(it => {
+				it.isVisible = it.searchTerm.includes(cleanTerm);
+				it.$ele.toggleVe(it.isVisible);
+			});
+		};
+		const handleSearchChangeDebounced = MiscUtil.debounce(handleSearchChange, 30);
+
+		const $iptSearch = (opts.$ele || $(opts.html || `<input class="form-control input-xs form-control--minimal">`))
+			.addClass("absolute ui-sel2__ipt-search")
+			.keydown(evt => {
+				switch (evt.key) {
+					case "Escape": evt.stopPropagation(); return $iptSearch.blur();
+
+					case "ArrowDown": {
+						evt.preventDefault();
+						const visibleMetaOptions = metaOptions.filter(it => it.isVisible);
+						if (!visibleMetaOptions.length) return;
+						visibleMetaOptions[0].$ele.focus();
+						break;
+					}
+
+					case "Enter": {
+						const visibleMetaOptions = metaOptions.filter(it => it.isVisible);
+						if (!visibleMetaOptions.length) return;
+						comp._state[prop] = visibleMetaOptions[0].value;
+						break;
+					}
+
+					default: handleSearchChangeDebounced();
+				}
+			})
+			.change(() => handleSearchChangeDebounced())
+			.click(() => $iptSearch.focus().select())
+			.disableSpellcheck();
+
+		const $wrpChoices = $(`<div class="absolute ui-sel2__wrp-options overflow-y-scroll"></div>`);
+
+		const $wrp = $$`<div class="flex relative ui-sel2__wrp w-100">
+			${$iptDisplay}
+			${$iptSearch}
+			${$wrpChoices}
+		</div>`;
+
+		const procValues = opts.isAllowNull ? [null, ...opts.values] : opts.values;
+		const metaOptions = procValues.map((v, i) => {
+			const display = v == null ? (opts.displayNullAs || "\u2014") : opts.fnDisplay ? opts.fnDisplay(v) : v;
+
+			const $ele = $(`<div class="flex-v-center py-1 px-1 clickable ui-sel2__disp-option ${v == null ? `italic` : ""}" tabindex="${i}">${display}</div>`)
+				.click(() => {
+					comp._state[prop] = v;
+					$(document.activeElement).blur();
+				})
+				.keydown(evt => {
+					switch (evt.key) {
+						case "Escape": evt.stopPropagation(); return $ele.blur();
+
+						case "ArrowDown": {
+							evt.preventDefault();
+							const visibleMetaOptions = metaOptions.filter(it => it.isVisible);
+							if (!visibleMetaOptions.length) return;
+							const ixCur = visibleMetaOptions.indexOf(out);
+							const nxt = visibleMetaOptions[ixCur + 1];
+							if (nxt) nxt.$ele.focus();
+							break;
+						}
+
+						case "ArrowUp": {
+							evt.preventDefault();
+							const visibleMetaOptions = metaOptions.filter(it => it.isVisible);
+							if (!visibleMetaOptions.length) return;
+							const ixCur = visibleMetaOptions.indexOf(out);
+							const prev = visibleMetaOptions[ixCur - 1];
+							if (prev) return prev.$ele.focus();
+							$iptSearch.focus();
+							break;
+						}
+
+						case "Enter": {
+							comp._state[prop] = v;
+							$iptSearch.focus();
+							break;
+						}
+					}
+				})
+				.appendTo($wrpChoices);
+
+			const out = {
+				value: v,
+				isVisible: true,
+				searchTerm: this._$getSelSearchable_getSearchString(display),
+				$ele,
+			};
+			return out;
+		});
+
+		const hk = () => {
+			if (comp._state[prop] == null) $iptDisplay.addClass("italic").val(opts.displayNullAs || "\u2014");
+			else $iptDisplay.removeClass("italic").val(opts.fnDisplay ? opts.fnDisplay(comp._state[prop]) : comp._state[prop]);
+
+			metaOptions.forEach(it => it.$ele.removeClass("active"))
+			const metaActive = metaOptions.find(it => it.value == null ? comp._state[prop] == null : it.value === comp._state[prop]);
+			if (metaActive) metaActive.$ele.addClass("active");
+		};
+		comp._addHookBase(prop, hk);
+		hk();
+
+		return opts.asMeta ? ({$wrp, unhook: () => comp._removeHookBase(prop, hk)}) : $wrp;
+	}
+
+	static _$getSelSearchable_getSearchString (str) {
+		if (str == null) return "";
+		return str.trim().toLowerCase().replace(/\s+/g, " ");
+	}
+
+	/**
 	 * @param component An instance of a class which extends BaseComponent.
 	 * @param prop Component to hook on.
 	 * @param opts Options Object.
 	 * @param opts.values Values to display.
 	 * @param [opts.$ele] Element to use.
+	 * @param [opts.html] HTML to convert to element to use.
 	 * @param [opts.isAllowNull] If null is allowed.
 	 * @param [opts.fnDisplay] Value display function.
+	 * @param [opts.displayNullAs] If null values are allowed, display them as this string.
 	 * @param [opts.asMeta] If a meta-object should be returned containing the hook and the select.
 	 * @return {JQuery}
 	 */
 	static $getSelEnum (component, prop, opts) {
 		opts = opts || {};
 
-		const $sel = (opts.$ele || $(`<select class="form-control input-xs"/>`))
+		const $sel = (opts.$ele || $(opts.html || `<select class="form-control input-xs"></select>`))
 			.change(() => {
 				const ix = Number($sel.val());
 				if (~ix) component._state[prop] = opts.values[ix];
 				else {
 					if (opts.isAllowNull) component._state[prop] = null;
-					else component._state[prop] = 0;
+					else component._state[prop] = opts.values[0];
 				}
 			});
-		if (opts.isAllowNull) $(`<option/>`, {value: -1, text: "\u2014"}).appendTo($sel);
+		if (opts.isAllowNull) $(`<option/>`, {value: -1, text: opts.displayNullAs || "\u2014"}).appendTo($sel);
 		opts.values.forEach((it, i) => $(`<option/>`, {value: i, text: opts.fnDisplay ? opts.fnDisplay(it) : it}).appendTo($sel));
 		const hook = () => {
+			const searchFor = component._state[prop] === undefined ? null : component._state[prop];
 			// Null handling is done in change handler
-			const ix = opts.values.indexOf(component._state[prop]);
+			const ix = opts.values.indexOf(searchFor);
 			$sel.val(`${ix}`);
 		};
 		component._addHookBase(prop, hook);
@@ -2416,15 +3544,12 @@ class ComponentUiUtil {
 		opts = opts || {};
 
 		const initialVals = opts.values
-			.map(v => ({[v]: component._state[prop] && component._state[prop].includes(v)}))
-			.reduce((a, b) => Object.assign(a, b), {});
+			.mergeMap(v => ({[v]: component._state[prop] && component._state[prop].includes(v)}));
 
-		const contextId = ContextUtil.getNextGenericMenuId();
-		const contextOptions = opts.values.map(it => ({name: opts.fnDisplay ? opts.fnDisplay(it) : it, action: () => pickComp.getPod().set(it, true)}));
-		ContextUtil.doInitContextMenu(contextId, (evt, ele, $invokedOn, $selectedMenu) => {
-			const val = Number($selectedMenu.data("ctx-id"));
-			contextOptions[val].action(evt, $invokedOn);
-		}, contextOptions.map(it => it.name));
+		const menu = ContextUtil.getMenu(opts.values.map(it => new ContextUtil.Action(
+			opts.fnDisplay ? opts.fnDisplay(it) : it,
+			() => pickComp.getPod().set(it, true),
+		)));
 
 		const pickComp = BaseComponent.fromObject(initialVals);
 		pickComp.render = function ($parent) {
@@ -2435,14 +3560,14 @@ class ComponentUiUtil {
 
 				const $btnRemove = $(`<button class="btn btn-danger ui-pick__btn-remove">×</button>`)
 					.click(() => this._state[k] = false);
-				$$`<div class="flex mx-1 ui-pick__disp-pill"><div class="px-1 ui-pick__disp-text flex-v-center">${opts.fnDisplay ? opts.fnDisplay(k) : k}</div>${$btnRemove}</div>`.appendTo($parent);
+				$$`<div class="flex mx-1 mb-1 ui-pick__disp-pill"><div class="px-1 ui-pick__disp-text flex-v-center">${opts.fnDisplay ? opts.fnDisplay(k) : k}</div>${$btnRemove}</div>`.appendTo($parent);
 			});
 		};
 
-		const $btnAdd = $(`<button class="btn btn-xxs btn-default ui-pick__btn-add">+</button>`)
-			.click(evt => ContextUtil.handleOpenContextMenu(evt, $btnAdd, contextId));
+		const $btnAdd = $(`<button class="btn btn-xxs btn-default ui-pick__btn-add mb-1">+</button>`)
+			.click(evt => ContextUtil.pOpenMenu(evt, menu));
 
-		const $wrpPills = $(`<div class="flex flex-wrap w-100 ui-pick__wrp"/>`);
+		const $wrpPills = $(`<div class="flex flex-wrap w-100"></div>`);
 		const $wrp = $$`<div class="flex-v-center">${$btnAdd}${$wrpPills}</div>`;
 		pickComp._addHookAll("state", () => {
 			component._state[prop] = Object.keys(pickComp._state).filter(k => pickComp._state[k]);
@@ -2466,9 +3591,12 @@ class ComponentUiUtil {
 	static $getCbsEnum (component, prop, opts) {
 		opts = opts || {};
 
-		const $wrp = $(`<div class="flex-col w-100"/>`);
+		const $wrp = $(`<div class="flex-col w-100"></div>`);
 		const metas = opts.values.map(it => {
 			const $cb = $(`<input type="checkbox">`)
+				.keydown(evt => {
+					if (evt.key === "Escape") $cb.blur();
+				})
 				.change(() => {
 					let didUpdate = false;
 					const ix = (component._state[prop] || []).indexOf(it);
@@ -2494,12 +3622,177 @@ class ComponentUiUtil {
 
 		return opts.asMeta ? {$wrp, unhook: () => component._removeHookBase(prop, hook)} : $wrp;
 	}
+
+	/**
+	 * @param comp
+	 * @param prop Base prop. This will be expanded with `__...`-suffixed sub-props as required.
+	 * @param opts Options.
+	 * @param [opts.values] Array of values. Mutually incompatible with "valueGroups".
+	 * @param [opts.valueGroups] Array of value groups (of the form `{name: "Group Name", values: [...]}`). Mutually incompatible with "values".
+	 * @param [opts.count] Number of choices the user can make (cannot be used with min/max).
+	 * @param [opts.min] Minimum number of choices the user can make (cannot be used with count).
+	 * @param [opts.max] Maximum number of choices the user can make (cannot be used with count).
+	 * @param [opts.isResolveItems] True if the promise should resolve to an array of the items instead of the indices. // TODO maybe remove?
+	 * @param [opts.fnDisplay] Function which takes a value and returns display text.
+	 */
+	static getMetaWrpMultipleChoice (comp, prop, opts) {
+		opts = opts || {};
+		this._getMetaWrpMultipleChoice_doValidateOptions(opts);
+
+		const rowMetas = [];
+		const $eles = [];
+		const ixsSelectionOrder = [];
+
+		const propIsAcceptable = this.getMetaWrpMultipleChoice_getPropIsAcceptable(prop);
+		const propPulse = this.getMetaWrpMultipleChoice_getPropPulse(prop);
+		const propIxMax = this._getMetaWrpMultipleChoice_getPropValuesLength(prop);
+
+		const valueGroups = opts.valueGroups || [{values: opts.values}];
+
+		let ixValue = 0;
+		valueGroups.forEach((group, i) => {
+			if (i !== 0) $eles.push($(`<hr class="w-100 hr-1 hr--dotted">`));
+
+			if (group.name) $eles.push($(`<div class="flex-v-center row py-1"><span class="mr-2">‒</span><span>${group.name}</span></div>`));
+
+			if (group.text) $eles.push($(`<div class="flex-v-center row py-1"><div class="ml-1 mr-3"></div><i>${group.text}</i></div>`));
+
+			group.values.forEach(v => {
+				const ixValueFrozen = ixValue;
+
+				const propIsActive = this.getMetaWrpMultipleChoice_getPropIsActive(prop, ixValueFrozen);
+				const propIsRequired = this.getMetaWrpMultipleChoice_getPropIsRequired(prop, ixValueFrozen);
+
+				// In the case of pre-existing selections, add these to our selection order tracking as they appear
+				if (comp._state[propIsActive] && !comp._state[propIsRequired]) ixsSelectionOrder.push(ixValueFrozen);
+
+				const $cb = comp._state[propIsRequired]
+					? $(`<input type="checkbox" disabled checked>`)
+					: ComponentUiUtil.$getCbBool(comp, propIsActive);
+				const hk = () => {
+					// region Selection order
+					const ixIx = ixsSelectionOrder.findIndex(it => it === ixValueFrozen);
+					if (~ixIx) ixsSelectionOrder.splice(ixIx, 1);
+					if (comp._state[propIsActive]) ixsSelectionOrder.push(ixValueFrozen);
+					// endregion
+
+					// region Enable/disable
+					const activeRows = rowMetas.filter(it => comp._state[it.propIsActive]);
+
+					if (opts.count != null) {
+						// If we're above the max allowed count, deselect a checkbox in FIFO order
+						if (activeRows.length > opts.count) {
+							// FIFO (`.shift`) makes logical sense, but FILO (`.splice` second-from-last) _feels_ better
+							const ixFirstSelected = ixsSelectionOrder.splice(ixsSelectionOrder.length - 2, 1)[0];
+							if (ixFirstSelected != null) {
+								const propIsActiveOther = this.getMetaWrpMultipleChoice_getPropIsActive(prop, ixFirstSelected);
+								comp._state[propIsActiveOther] = false;
+
+								comp._state[propPulse] = !comp._state[propPulse];
+							}
+							return;
+						}
+					}
+
+					let isAcceptable = false;
+					if (opts.count != null) {
+						if (activeRows.length === opts.count) isAcceptable = true;
+					} else {
+						if (activeRows.length >= (opts.min || 0) && activeRows.length <= (opts.max || Number.MAX_SAFE_INTEGER)) isAcceptable = true;
+					}
+
+					// Save this to a flag in the state object that external code can read
+					comp._state[propIsAcceptable] = isAcceptable;
+					// endregion
+
+					comp._state[propPulse] = !comp._state[propPulse];
+				};
+				comp._addHookBase(propIsActive, hk);
+				hk();
+
+				rowMetas.push({
+					$cb,
+					propIsActive,
+					unhook: () => comp._removeHookBase(propIsActive, hk),
+				});
+
+				$eles.push($$`<label class="flex-v-center row py-1 stripe-even">
+					<div class="col-1 flex-vh-center">${$cb}</div>
+					<div class="col-11 flex-v-center">${opts.fnDisplay ? opts.fnDisplay(v, ixValueFrozen) : v}</div>
+				</label>`);
+
+				ixValue++;
+			});
+		});
+
+		// Sort the initial selection order (i.e. that from defaults) by lowest to highest, such that new clicks
+		//   will remove from the first element in visual order
+		ixsSelectionOrder.sort((a, b) => SortUtil.ascSort(a, b));
+
+		comp.__state[propIxMax] = ixValue;
+
+		// Always return this as a "meta" object
+		const unhook = () => rowMetas.forEach(it => it.unhook());
+		return {
+			$ele: $$`<div class="flex-col w-100 overflow-y-auto">${$eles}</div>`,
+			propIsAcceptable,
+			propPulse,
+			unhook,
+			cleanup: () => {
+				unhook();
+				// This will trigger a final "pulse"
+				Object.keys(comp._state)
+					.filter(it => it.startsWith(`${prop}__`))
+					.forEach(it => delete comp._state[it]);
+			},
+		};
+	}
+
+	static getMetaWrpMultipleChoice_getPropIsAcceptable (prop) { return `${prop}__isAcceptable`; }
+	static getMetaWrpMultipleChoice_getPropPulse (prop) { return `${prop}__pulse`; }
+	static _getMetaWrpMultipleChoice_getPropValuesLength (prop) { return `${prop}__length`; }
+	static getMetaWrpMultipleChoice_getPropIsActive (prop, ixValue) { return `${prop}__isActive_${ixValue}`; }
+	static getMetaWrpMultipleChoice_getPropIsRequired (prop, ixValue) { return `${prop}__isRequired_${ixValue}`; }
+
+	static getMetaWrpMultipleChoice_getSelectedIxs (comp, prop) {
+		const out = [];
+		const len = comp._state[this._getMetaWrpMultipleChoice_getPropValuesLength(prop)] || 0;
+		for (let i = 0; i < len; ++i) {
+			if (comp._state[this.getMetaWrpMultipleChoice_getPropIsActive(prop, i)]) out.push(i);
+		}
+		return out;
+	}
+
+	static getMetaWrpMultipleChoice_getSelectedValues (comp, prop, {values, valueGroups}) {
+		const selectedIxs = this.getMetaWrpMultipleChoice_getSelectedIxs(comp, prop);
+		if (values) return selectedIxs.map(ix => values[ix]);
+
+		const selectedIxsSet = new Set(selectedIxs);
+		const out = [];
+		let ixValue = 0;
+		valueGroups.forEach(group => {
+			group.values.forEach(v => {
+				if (selectedIxsSet.has(ixValue)) out.push(v);
+				ixValue++;
+			});
+		});
+		return out;
+	}
+
+	static _getMetaWrpMultipleChoice_doValidateOptions (opts) {
+		if ((Number(!!opts.values) + Number(!!opts.valueGroups)) !== 1) throw new Error(`Exactly one of "values" and "valueGroups" must be specified!`);
+
+		if (opts.count != null && (opts.min != null || opts.max != null)) throw new Error(`Chooser must be either in "count" mode or "min/max" mode!`);
+		// If no mode is specified, default to a "count 1" chooser
+		if (opts.count == null && opts.min == null && opts.max == null) opts.count = 1;
+	}
 }
 
 if (typeof module !== "undefined") {
 	module.exports = {
 		ProxyBase,
 		UiUtil,
+		ListUiUtil,
 		ProfUiUtil,
 		TabUiUtil,
 		SearchUiUtil,
@@ -2508,6 +3801,7 @@ if (typeof module !== "undefined") {
 		DragReorderUiUtil,
 		SourceUiUtil,
 		BaseComponent,
-		ComponentUiUtil
+		ComponentUiUtil,
+		RenderableCollectionBase,
 	}
 }

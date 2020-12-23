@@ -1514,7 +1514,7 @@
 							"name": "Treasure",
 							"id": "088",
 							"entries": [
-								"Great Ulfe keeps his hoard in two large wooden chests against the south wall: 440 gp, 1,600 sp, a {@item potion of climbing}, and a {@item rapier +1||+1 rapier}. (The ogre would never stoop to wielding the delicate blade like some prancing bard.)"
+								"Great Ulfe keeps his hoard in two large wooden chests against the south wall: 440 gp, 1,600 sp, a {@item potion of climbing}, and a {@item +1 rapier}. (The ogre would never stoop to wielding the delicate blade like some prancing bard.)"
 							]
 						}
 					]
@@ -2021,7 +2021,7 @@
 							"name": "Treasure",
 							"id": "0bb",
 							"entries": [
-								"The dwarf skeleton clutches a {@item longsword +1||+1 longsword} that bears Durgeddin's smith-mark. The human skeleton wears a steel helmet chased with silver, worth 110 gp."
+								"The dwarf skeleton clutches a {@item +1 longsword} that bears Durgeddin's smith-mark. The human skeleton wears a steel helmet chased with silver, worth 110 gp."
 							]
 						}
 					]
@@ -2874,7 +2874,7 @@
 					"name": "44. Looted Rooms",
 					"id": "111",
 					"entries": [
-						"Severak chambers in the Foundry were once living quarters, drawing rooms, barracks, armories, storerooms, and so on. Now they contain only smashed furniture and debris from the final battle, graffiti in the Orc language, and skeletal remains of dwarves and orcs.",
+						"Several chambers in the Foundry were once living quarters, drawing rooms, barracks, armories, storerooms, and so on. Now they contain only smashed furniture and debris from the final battle, graffiti in the Orc language, and skeletal remains of dwarves and orcs.",
 						{
 							"type": "entries",
 							"name": "Treasure",
@@ -3223,7 +3223,7 @@
 							"name": "Treasure",
 							"id": "135",
 							"entries": [
-								"Nightscale has accumulated considerable wealth from her plunder of Khundrukar. Her hoard contains 6,200 sp, 1,430 gp, two garnets worth 20 gp each, a black pearl worth 50 gp, a {@item wand of magic missiles}, a {@item greataxe +2||+2 greataxe} bearing Durgeddin's smith-mark, a {@item shield +1||+1 shield}, a {@item potion of healing}, and a {@item potion of flying}."
+								"Nightscale has accumulated considerable wealth from her plunder of Khundrukar. Her hoard contains 6,200 sp, 1,430 gp, two garnets worth 20 gp each, a black pearl worth 50 gp, a {@item wand of magic missiles}, a {@item +2 greataxe} bearing Durgeddin's smith-mark, a {@item +1 shield}, a {@item potion of healing}, and a {@item potion of flying}."
 							]
 						}
 					]
@@ -3281,7 +3281,7 @@
 									"name": "Track the Broken Blade",
 									"id": "13a",
 									"entries": [
-										"If the characters were sent to retrieve weapons for Baron Althon, they can bring him the {@item longsword +1||+1 longsword} from {@area 22|0b8}, the {@item greataxe +2||+2 greataxe} in {@area 53|133}, the {@item handaxe|PHB} from are 14, and the {@item warhammer|PHB} from are 23. All bear Durgeddin's smith-mark; Baron Althon pays 500 gp above the market price for each mundane weapon, 1,000 gp for the {@item longsword +1||+1 longsword}, and 6,000 gp for the {@item greataxe +2||+2 greataxe}, if the characters are willing to sell."
+										"If the characters were sent to retrieve weapons for Baron Althon, they can bring him the {@item +1 longsword} from {@area 22|0b8}, the {@item +2 greataxe} in {@area 53|133}, the {@item handaxe|PHB} from are 14, and the {@item warhammer|PHB} from are 23. All bear Durgeddin's smith-mark; Baron Althon pays 500 gp above the market price for each mundane weapon, 1,000 gp for the {@item +1 longsword}, and 6,000 gp for the {@item +2 greataxe}, if the characters are willing to sell."
 									]
 								},
 								{
@@ -3315,6 +3315,90 @@
 					]
 				}
 			]
+		},
+		{
+			"type": "section",
+			"name": "Appendix A: Magic Items",
+			"entries": [
+				"The magic items that are introduced in this book are detailed here in alphabetical order. The adventure in which an item appears is given at the end of its description.",
+				{
+					"type": "list",
+					"columns": 3,
+					"items": [
+						"{@item Amulet of Protection from Turning|TftYP}",
+						"{@item Balance of Harmony|TftYP}",
+						"{@item Bracelet of Rock Magic|TftYP}",
+						"{@item Eagle Whistle|TftYP}",
+						"{@item Hell Hound Cloak|TftYP}",
+						"{@item Loadstone|TftYP}",
+						"{@item Mirror of the Past|TftYP}",
+						"{@item Night Caller|TftYP}",
+						"{@item Potion of Mind Control|TftYP}",
+						"{@item Robe of Summer|TftYP}",
+						"{@item Shatterspike|TftYP}",
+						"{@item Spear of Backbiting|TftYP}",
+						"{@item Stone of Ill Luck|TftYP}",
+						"{@item Wand of Entangle|TftYP}",
+						"{@item Waythe|TftYP}"
+					]
+				}
+			],
+			"id": "13d"
+		},
+		{
+			"type": "section",
+			"name": "Appendix B: Creatures",
+			"entries": [
+				"This appendix details creatures and nonplayer characters that are mentioned in this book and that don't appear in the {@book Monster Manual|MM}. That book's introduction explains how to interpret a stat block.",
+				"Some of these creatures are available in {@book Volo's Guide to Monsters|VGM} but are reproduced here for your convenience.",
+				"The creatures are presented in alphabetical order.",
+				{
+					"type": "list",
+					"columns": 4,
+					"items": [
+						"{@creature Animated Table|TftYP}",
+						"{@creature Barghest|VGM}",
+						"{@creature Centaur Mummy|TftYP}",
+						"{@creature Champion|VGM}",
+						"{@creature Choker|MTF}",
+						"{@creature Conjurer|VGM}",
+						"{@creature Deathlock Wight|MTF}",
+						"{@creature Dread Warrior|TftYP}",
+						"{@creature Duergar Spy|TftYP}",
+						"{@creature Enchanter|VGM}",
+						"{@creature Evoker|VGM}",
+						"{@creature Giant Crayfish|TftYP}",
+						"{@creature Giant Ice toad|TftYP}",
+						"{@creature Giant Lightning eel|TftYP}",
+						"{@creature Giant Skeleton|TftYP}",
+						"{@creature Giant Subterranean lizard|TftYP}",
+						"{@creature Greater Zombie|TftYP}",
+						"{@creature Illusionist|VGM}",
+						"{@creature Kalka-Kylla|TftYP}",
+						"{@creature Kelpie|TftYP}",
+						"{@creature Leucrotta|VGM}",
+						"{@creature Malformed Kraken|TftYP}",
+						"{@creature Martial Arts Adept|VGM}",
+						"{@creature Nereid|TftYP}",
+						"{@creature Necromancer|VGM}",
+						"{@creature Ooze master|TftYP}",
+						"{@creature Sea Lion|TftYP}",
+						"{@creature Sharwyn Hucrele|TftYP}",
+						"{@creature Sir Braford|TftYP}",
+						"{@creature Siren|TftYP}",
+						"{@creature Tarul var|TftYP}",
+						"{@creature Tecuziztecatl|TftYP}",
+						"{@creature Thayan Apprentice|TftYP}",
+						"{@creature Thayan Warrior|TftYP}",
+						"{@creature Thorn Slinger|TftYP}",
+						"{@creature Transmuter|VGM}",
+						"{@creature Vampiric Mist|MTF}",
+						"{@creature White Maw|TftYP}",
+						"{@creature Yusdrayl|TftYP}"
+					]
+				}
+			],
+			"id": "13e"
 		}
 	]
 }

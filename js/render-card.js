@@ -252,7 +252,7 @@ class RendererCard {
 
 	_renderAbilityGeneric (entry, textStack, meta, options) {
 		this._renderPrefix(entry, textStack, meta, options);
-		textStack[0] += `${entry.name ? `<b>${entry.name}</b>  = ` : ""}${entry.text}${entry.attributes ? ` ${Parser.attrChooseToFull(entry.attributes)}` : ""}`;
+		textStack[0] += `${entry.name ? `<b>${entry.name}</b> = ` : ""}${entry.text}${entry.attributes ? ` ${Parser.attrChooseToFull(entry.attributes)}` : ""}`;
 		this._renderSuffix(entry, textStack, meta, options);
 	}
 	// endregion
@@ -282,7 +282,7 @@ class RendererCard {
 
 	_renderLink (entry, textStack, meta, options) {
 		const href = this._renderLink_getHref(entry);
-		textStack[0] += `<a href="${href}" rel="noopener">${this.render(entry.text)}</a>`;
+		textStack[0] += `<a href="${href}" rel="noopener noreferrer">${this.render(entry.text)}</a>`;
 	}
 
 	/*
@@ -349,6 +349,28 @@ class RendererCard {
 	}
 	// endregion
 
+	// region flowchart
+	_renderFlowchart (entry, textStack, meta, options) {
+		const len = entry.blocks.length;
+		for (let i = 0; i < len; ++i) this._recursiveRender(entry.blocks[i], textStack, meta, options);
+	}
+
+	_renderFlowBlock (entry, textStack, meta, options) {
+		textStack[0] += "\n";
+		if (entry.name != null) textStack[0] += `section | ${entry.name}\n`;
+		if (entry.entries) {
+			const len = entry.entries.length;
+			for (let i = 0; i < len; ++i) {
+				const cacheDepth = meta.depth;
+				meta.depth = 2;
+				this._recursiveRender(entry.entries[i], textStack, meta, {prefix: "text | ", suffix: "\n"});
+				meta.depth = cacheDepth;
+			}
+		}
+		textStack[0] += `\n`;
+	}
+	// endregion
+
 	// region homebrew
 	_renderHomebrew (entry, textStack, meta, options) {
 		textStack[0] += `text | (Homebrew rendering within cards is not supported.)\n`
@@ -382,7 +404,7 @@ class RendererCard {
 RendererCard.utils = class {
 	static getPageText (it) {
 		const sourceSub = Renderer.utils.getSourceSubText(it);
-		const baseText = it.page > 0 ? `text | <b>Source:</b> <i>${Parser.sourceJsonToAbv(it.source)}${sourceSub}</i>, page ${it.page}` : "";
+		const baseText = Renderer.utils.isDisplayPage(it.page) ? `text | <b>Source:</b> <i>${Parser.sourceJsonToAbv(it.source)}${sourceSub}</i>, page ${it.page}` : "";
 		const addSourceText = this._getPageText_getAltSourceText(it, "additionalSources", "Additional information from");
 		const otherSourceText = this._getPageText_getAltSourceText(it, "otherSources", "Also found in");
 		const externalSourceText = this._getPageText_getAltSourceText(it, "externalSources", "External sources:");
@@ -395,7 +417,7 @@ RendererCard.utils = class {
 
 		return `${introText} ${it[prop].map(as => {
 			if (as.entry) return Renderer.get().render(as.entry);
-			else return `<i>${Parser.sourceJsonToAbv(as.source)}</i>>${as.page > 0 ? `, page ${as.page}` : ""}`;
+			else return `<i>${Parser.sourceJsonToAbv(as.source)}</i>>${Renderer.utils.isDisplayPage(as.page) ? `, page ${as.page}` : ""}`;
 		}).join("; ")}`
 	}
 };

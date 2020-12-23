@@ -7,7 +7,8 @@ class RenderSpells {
 
 		renderStack.push(`
 			${Renderer.utils.getBorderTr()}
-			${Renderer.utils.getNameTr(sp)}
+			${Renderer.utils.getExcludedTr(sp, "spell", UrlUtil.PG_SPELLS)}
+			${Renderer.utils.getNameTr(sp, {page: UrlUtil.PG_SPELLS})}
 			<tr><td class="rd-spell__level-school-ritual" colspan="6"><span>${Parser.spLevelSchoolMetaToFull(sp.level, sp.school, sp.meta, sp.subschools)}</span></td></tr>
 			<tr><td colspan="6"><span class="bold">Casting Time: </span>${Parser.spTimeListToFull(sp.time)}</td></tr>
 			<tr><td colspan="6"><span class="bold">Range: </span>${Parser.spRangeToFull(sp.range)}</td></tr>
@@ -25,31 +26,57 @@ class RenderSpells {
 		}
 		renderStack.push(`</td></tr>`);
 
-		if (sp.classes) renderStack.push(`<tr class="text"><td colspan="6"><span class="bold">Classes: </span>${Parser.spMainClassesToFull(sp.classes)}</td></tr>`);
+		const stackFroms = [];
 
-		if (sp.classes && sp.classes.fromSubclass) {
-			const currentAndLegacy = Parser.spSubclassesToCurrentAndLegacyFull(sp.classes, subclassLookup);
-			renderStack.push(`<tr class="text"><td colspan="6"><span class="bold">Subclasses: </span>${currentAndLegacy[0]}</td></tr>`);
-			if (currentAndLegacy[1]) {
-				renderStack.push(`<tr class="text"><td colspan="6"><section class="text-muted"><span class="bold">Subclasses (legacy): </span>${currentAndLegacy[1]}</section></td></tr>`);
+		const fromClassList = Renderer.spell.getCombinedClasses(sp, "fromClassList");
+		if (fromClassList.length) {
+			const [current, legacy] = Parser.spClassesToCurrentAndLegacy(fromClassList);
+			stackFroms.push(`<div><span class="bold">Classes: </span>${Parser.spMainClassesToFull(current)}</div>`);
+			if (legacy.length) stackFroms.push(`<div class="text-muted"><span class="bold">Classes (legacy): </span>${Parser.spMainClassesToFull(legacy)}</div>`);
+		}
+
+		const fromSubclass = Renderer.spell.getCombinedClasses(sp, "fromSubclass");
+		if (fromSubclass.length) {
+			const [current, legacy] = Parser.spSubclassesToCurrentAndLegacyFull(sp, subclassLookup);
+			stackFroms.push(`<div><span class="bold">Subclasses: </span>${current}</div>`);
+			if (legacy.length) {
+				stackFroms.push(`<div class="text-muted"><span class="bold">Subclasses (legacy): </span>${legacy}</div>`);
 			}
 		}
 
-		if (sp.classes && sp.classes.fromClassListVariant) {
-			renderStack.push(`<tr class="text"><td colspan="6"><span class="bold" title="Source: ${Parser.sourceJsonToFull(SRC_UACFV)}">Variant Classes: </span>${Parser.spMainClassesToFull(sp.classes, false, "fromClassListVariant")}</td></tr>`);
+		const fromClassListVariant = Renderer.spell.getCombinedClasses(sp, "fromClassListVariant");
+		if (fromClassListVariant.length) {
+			const [current, legacy] = Parser.spVariantClassesToCurrentAndLegacy(fromClassListVariant);
+			if (current.length) {
+				stackFroms.push(`<div><span class="bold">Optional/Variant Classes: </span>${Parser.spMainClassesToFull(current)}</div>`);
+			}
+			if (legacy.length) {
+				stackFroms.push(`<div class="text-muted"><span class="bold">Optional/Variant Classes (legacy): </span>${Parser.spMainClassesToFull(legacy)}</div>`);
+			}
 		}
 
 		if (sp.races) {
-			renderStack.push(`<tr class="text"><td colspan="6"><span class="bold">Races: </span>${sp.races.map(r => renderer.render(`{@race ${r.name}|${r.source}}`)).join(", ")}</td></tr>`);
+			sp.races.sort((a, b) => SortUtil.ascSortLower(a.name, b.name) || SortUtil.ascSortLower(a.source, b.source));
+			stackFroms.push(`<div><span class="bold">Races: </span>${sp.races.map(r => `${SourceUtil.isNonstandardSource(r.source) ? `<span class="text-muted">` : ``}${renderer.render(`{@race ${r.name}|${r.source}}`)}${SourceUtil.isNonstandardSource(r.source) ? `</span>` : ``}`).join(", ")}</div>`);
 		}
 
 		if (sp.backgrounds) {
-			renderStack.push(`<tr class="text"><td colspan="6"><span class="bold">Backgrounds: </span>${sp.backgrounds.sort((a, b) => SortUtil.ascSortLower(a.name, b.name)).map(r => renderer.render(`{@background ${r.name}|${r.source}}`)).join(", ")}</td></tr>`);
+			sp.backgrounds.sort((a, b) => SortUtil.ascSortLower(a.name, b.name) || SortUtil.ascSortLower(a.source, b.source));
+			stackFroms.push(`<div><span class="bold">Backgrounds: </span>${sp.backgrounds.map(r => `${SourceUtil.isNonstandardSource(r.source) ? `<span class="text-muted">` : ``}${renderer.render(`{@background ${r.name}|${r.source}}`)}${SourceUtil.isNonstandardSource(r.source) ? `</span>` : ``}`).join(", ")}</div>`);
+		}
+
+		if (sp.eldritchInvocations) {
+			sp.eldritchInvocations.sort((a, b) => SortUtil.ascSortLower(a.name, b.name) || SortUtil.ascSortLower(a.source, b.source));
+			stackFroms.push(`<div><span class="bold">Eldritch Invocations: </span>${sp.eldritchInvocations.map(r => `${SourceUtil.isNonstandardSource(r.source) ? `<span class="text-muted">` : ``}${renderer.render(`{@optfeature ${r.name}|${r.source}}`)}${SourceUtil.isNonstandardSource(r.source) ? `</span>` : ``}`).join(", ")}</div>`);
+		}
+
+		if (stackFroms.length) {
+			renderStack.push(`<tr class="text"><td colspan="6">${stackFroms.join("")}</td></tr>`)
 		}
 
 		if (sp._scrollNote) {
 			renderStack.push(`<tr class="text"><td colspan="6"><section class="text-muted">`);
-			renderer.recursiveRender(`{@italic Note: Both the {@class ${RenderSpells.STR_FIGHTER} (${RenderSpells.STR_ELD_KNIGHT})} and the {@class ${RenderSpells.STR_ROGUE} (${RenderSpells.STR_ARC_TCKER})} spell lists include all {@class ${RenderSpells.STR_WIZARD}} spells. Spells of 5th level or higher may be cast with the aid of a spell scroll or similar.}`, renderStack, {depth: 2});
+			renderer.recursiveRender(`{@italic Note: Both the {@class fighter||${Renderer.spell.STR_FIGHTER} (${Renderer.spell.STR_ELD_KNIGHT})|eldritch knight} and the {@class rogue||${Renderer.spell.STR_ROGUE} (${Renderer.spell.STR_ARC_TCKER})|arcane trickster} spell lists include all {@class ${Renderer.spell.STR_WIZARD}} spells. Spells of 5th level or higher may be cast with the aid of a spell scroll or similar.}`, renderStack, {depth: 2});
 			renderStack.push(`</section></td></tr>`);
 		}
 
@@ -78,9 +105,11 @@ class RenderSpells {
 
 				const target = subclassLookup[c.source][c.name];
 				c.subclasses.forEach(sc => {
+					sc.source = sc.source || c.source;
+					sc.shortName = sc.shortName || sc.name;
 					(target[sc.source] =
-						target[sc.source] || {})[sc.shortName || sc.name] =
-						target[sc.source][sc.shortName || sc.name] || sc.name
+						target[sc.source] || {})[sc.shortName] =
+						target[sc.source][sc.shortName] || {name: sc.name}
 				});
 			})
 		}
@@ -88,123 +117,17 @@ class RenderSpells {
 		if (homebrew.subclass) {
 			homebrew.subclass.forEach(sc => {
 				const clSrc = sc.classSource || SRC_PHB;
-				(subclassLookup[clSrc] =
-					subclassLookup[clSrc] || {})[sc.class] =
-					subclassLookup[clSrc][sc.class] || {};
+				sc.shortName = sc.shortName || sc.name;
 
-				const target = subclassLookup[clSrc][sc.class];
+				(subclassLookup[clSrc] =
+					subclassLookup[clSrc] || {})[sc.className] =
+					subclassLookup[clSrc][sc.className] || {};
+
+				const target = subclassLookup[clSrc][sc.className];
 				(target[sc.source] =
-					target[sc.source] || {})[sc.shortName || sc.name] =
-					target[sc.source][sc.shortName || sc.name] || sc.name
+					target[sc.source] || {})[sc.shortName] =
+					target[sc.source][sc.shortName] || {name: sc.name}
 			})
 		}
 	}
-
-	static initClasses (spell, brewSpellClasses) {
-		if (spell._isInitClasses) return;
-		spell._isInitClasses = true;
-
-		// add eldritch knight and arcane trickster
-		if (spell.classes && spell.classes.fromClassList && spell.classes.fromClassList.filter(c => c.name === RenderSpells.STR_WIZARD && c.source === SRC_PHB).length) {
-			if (!spell.classes.fromSubclass) spell.classes.fromSubclass = [];
-			spell.classes.fromSubclass.push({
-				class: {name: RenderSpells.STR_FIGHTER, source: SRC_PHB},
-				subclass: {name: RenderSpells.STR_ELD_KNIGHT, source: SRC_PHB}
-			});
-			spell.classes.fromSubclass.push({
-				class: {name: RenderSpells.STR_ROGUE, source: SRC_PHB},
-				subclass: {name: RenderSpells.STR_ARC_TCKER, source: SRC_PHB}
-			});
-			if (spell.level > 4) {
-				spell._scrollNote = true;
-			}
-		}
-
-		// add divine soul, favored soul v2, favored soul v3
-		if (spell.classes && spell.classes.fromClassList && spell.classes.fromClassList.filter(c => c.name === RenderSpells.STR_CLERIC && c.source === SRC_PHB).length) {
-			if (!spell.classes.fromSubclass) {
-				spell.classes.fromSubclass = [];
-				spell.classes.fromSubclass.push({
-					class: {name: RenderSpells.STR_SORCERER, source: SRC_PHB},
-					subclass: {name: RenderSpells.STR_DIV_SOUL, source: SRC_XGE}
-				});
-			} else {
-				if (!spell.classes.fromSubclass.find(it => it.class.name === RenderSpells.STR_SORCERER && it.class.source === SRC_PHB && it.subclass.name === RenderSpells.STR_DIV_SOUL && it.subclass.source === SRC_XGE)) {
-					spell.classes.fromSubclass.push({
-						class: {name: RenderSpells.STR_SORCERER, source: SRC_PHB},
-						subclass: {name: RenderSpells.STR_DIV_SOUL, source: SRC_XGE}
-					});
-				}
-			}
-			spell.classes.fromSubclass.push({
-				class: {name: RenderSpells.STR_SORCERER, source: SRC_PHB},
-				subclass: {name: RenderSpells.STR_FAV_SOUL_V2, source: SRC_UAS}
-			});
-			spell.classes.fromSubclass.push({
-				class: {name: RenderSpells.STR_SORCERER, source: SRC_PHB},
-				subclass: {name: RenderSpells.STR_FAV_SOUL_V3, source: SRC_UARSC}
-			});
-		}
-
-		if (spell.classes && spell.classes.fromClassList && spell.classes.fromClassList.find(it => it.name === "Wizard")) {
-			if (spell.level === 0) {
-				// add high elf
-				(spell.races || (spell.races = [])).push({
-					name: "Elf (High)",
-					source: SRC_PHB,
-					baseName: "Elf",
-					baseSource: SRC_PHB
-				});
-				// add arcana cleric
-				(spell.classes.fromSubclass = spell.classes.fromSubclass || []).push({
-					class: {name: RenderSpells.STR_CLERIC, source: SRC_PHB},
-					subclass: {name: "Arcana", source: SRC_SCAG}
-				});
-			}
-
-			// add arcana cleric
-			if (spell.level >= 6) {
-				(spell.classes.fromSubclass = spell.classes.fromSubclass || []).push({
-					class: {name: RenderSpells.STR_CLERIC, source: SRC_PHB},
-					subclass: {name: "Arcana", source: SRC_SCAG}
-				});
-			}
-		}
-
-		if (spell.classes && spell.classes.fromClassList && spell.classes.fromClassList.find(it => it.name === "Druid")) {
-			if (spell.level === 0) {
-				// add nature cleric
-				(spell.classes.fromSubclass = spell.classes.fromSubclass || []).push({
-					class: {name: RenderSpells.STR_CLERIC, source: SRC_PHB},
-					subclass: {name: "Nature", source: SRC_PHB}
-				});
-			}
-		}
-
-		// add homebrew class/subclass
-		if (brewSpellClasses) {
-			const lowName = spell.name.toLowerCase();
-			if (brewSpellClasses[spell.source] && brewSpellClasses[spell.source][lowName]) {
-				spell.classes = spell.classes || {};
-				if (brewSpellClasses[spell.source][lowName].fromClassList.length) {
-					spell.classes.fromClassList = spell.classes.fromClassList || [];
-					spell.classes.fromClassList = spell.classes.fromClassList.concat(brewSpellClasses[spell.source][lowName].fromClassList);
-				}
-				if (brewSpellClasses[spell.source][lowName].fromSubclass.length) {
-					spell.classes.fromSubclass = spell.classes.fromSubclass || [];
-					spell.classes.fromSubclass = spell.classes.fromSubclass.concat(brewSpellClasses[spell.source][lowName].fromSubclass);
-				}
-			}
-		}
-	}
 }
-RenderSpells.STR_WIZARD = "Wizard";
-RenderSpells.STR_FIGHTER = "Fighter";
-RenderSpells.STR_ROGUE = "Rogue";
-RenderSpells.STR_CLERIC = "Cleric";
-RenderSpells.STR_SORCERER = "Sorcerer";
-RenderSpells.STR_ELD_KNIGHT = "Eldritch Knight";
-RenderSpells.STR_ARC_TCKER = "Arcane Trickster";
-RenderSpells.STR_DIV_SOUL = "Divine Soul";
-RenderSpells.STR_FAV_SOUL_V2 = "Favored Soul v2 (UA)";
-RenderSpells.STR_FAV_SOUL_V3 = "Favored Soul v3 (UA)";

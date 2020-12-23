@@ -1,17 +1,61 @@
 @import 'vars';
 
+// region Fix Chrome
+input[type='checkbox']:checked {
+	// stylelint-disable-next-line
+	-webkit-filter: grayscale(100%);
+}
+
+input[type='radio']:checked {
+	// stylelint-disable-next-line
+	-webkit-filter: grayscale(100%);
+}
+// endregion
+
+// region Fix Glyphicon alignments
+.glyphicon-send {
+	top: 2px;
+	right: 1px;
+}
+// endregion
+
 .roller {
 	color: $rgb-link-blue;
 	cursor: pointer;
 }
 
+.text-muted a {
+	color: $rgb-link-blue--muted;
+}
+
+.font-ui {
+	font-family: Arial, sans-serif;
+}
+
 /* Generic/utilities */
 .code {
 	font-family: 'Courier New', monospace;
+
+	&--narrow {
+		// This has slightly narrower characters on my Windows machine :^)
+		font-family: monospace;
+	}
+}
+
+.ve-muted {
+	color: $rgb-font--muted !important;
+}
+
+.ve-small {
+	font-size: 85% !important;
 }
 
 .clickable {
 	cursor: pointer !important;
+
+	&--link {
+		color: $rgb-link-blue !important;
+	}
 }
 
 .not-clickable {
@@ -22,7 +66,7 @@
 	cursor: copy !important;
 }
 
-.unselectable {
+.no-select {
 	user-select: none !important;
 }
 
@@ -32,6 +76,10 @@
 
 .italic {
 	font-style: italic !important;
+}
+
+i > i {
+	font-style: initial;
 }
 
 .underline {
@@ -65,14 +113,24 @@
 	overflow-y: auto;
 }
 
+.overflow-y-scroll {
+	overflow-y: scroll;
+}
+
+.overflow-y-hidden {
+	overflow-y: hidden;
+}
+
+.overflow-x-scroll {
+	overflow-x: scroll;
+}
+
 .overflow-x-hidden {
 	overflow-x: hidden;
 }
 
 .overflow-ellipsis {
-	text-overflow: ellipsis;
-	overflow: hidden;
-	white-space: nowrap;
+	@include overflow-dots();
 }
 
 .resize-vertical {
@@ -94,6 +152,13 @@
 .help,
 .help--hover {
 	cursor: help;
+	text-decoration: underline;
+	text-decoration-style: dotted;
+}
+
+.help:hover,
+.help:active,
+.help:focus {
 	text-decoration: underline;
 	text-decoration-style: dotted;
 }
@@ -123,16 +188,48 @@
 	width: 100% !important;
 }
 
+.w-90 {
+	width: 90% !important;
+}
+
+.w-80 {
+	width: 80% !important;
+}
+
+.w-75 {
+	width: 75% !important;
+}
+
+.w-70 {
+	width: 70% !important;
+}
+
 .w-66 {
 	width: 66.6666666% !important;
 }
 
+.w-60 {
+	width: 60% !important;
+}
+
 .w-50 {
 	width: 50% !important;
+
+	&--mr-2 {
+		width: calc(50% - #{$spacer * 0.5}) !important;
+	}
+}
+
+.w-40 {
+	width: 40% !important;
 }
 
 .w-33 {
 	width: 33.3333333% !important;
+}
+
+.mw-33 {
+	max-width: 33.3333333% !important;
 }
 
 .w-30 {
@@ -141,6 +238,10 @@
 
 .w-25 {
 	width: 25% !important;
+}
+
+.mw-25 {
+	max-width: 25% !important;
 }
 
 .w-20 {
@@ -159,8 +260,17 @@
 	height: 100% !important;
 }
 
+// Often useful as a hack to force flexbox to behave
+.min-h-0 {
+	min-height: 0;
+}
+
 .min-h-100 {
 	min-height: 100% !important;
+}
+
+.max-w-80 {
+	min-width: 80% !important;
 }
 
 .grid {
@@ -221,7 +331,7 @@
 	flex-shrink: 0;
 }
 
-.grow {
+.ve-grow {
 	flex-grow: 1;
 }
 
@@ -246,6 +356,12 @@
 	align-items: center;
 }
 
+.split-v-end {
+	display: flex !important;
+	justify-content: space-between;
+	align-items: flex-end;
+}
+
 .split-child {
 	width: 50%;
 	flex-shrink: 0;
@@ -263,8 +379,8 @@
 }
 
 .flex-v-center {
-	display: flex;
-	align-items: center;
+	display: flex !important;
+	align-items: center !important;
 }
 
 .flex-h-center {
@@ -273,7 +389,13 @@
 }
 
 .flex-v-top {
+	display: flex;
 	align-items: flex-start;
+}
+
+.flex-v-bottom {
+	display: flex;
+	align-items: flex-end;
 }
 
 .flex-v-baseline {
@@ -310,6 +432,11 @@
 
 .columns-2 {
 	column-count: 2;
+	break-inside: avoid-column;
+
+	> * {
+		break-inside: avoid-column;
+	}
 
 	@media (max-width: 768px) {
 		column-count: 1;
@@ -318,6 +445,11 @@
 
 .columns-3 {
 	column-count: 3;
+	break-inside: avoid-column;
+
+	> * {
+		break-inside: avoid-column;
+	}
 
 	@media (max-width: 768px) {
 		column-count: 2;
@@ -330,6 +462,11 @@
 
 .columns-4 {
 	column-count: 4;
+	break-inside: avoid-column;
+
+	> * {
+		break-inside: avoid-column;
+	}
 
 	@media (max-width: 768px) {
 		column-count: 3;
@@ -338,6 +475,44 @@
 	@media (max-width: 480px) {
 		column-count: 2;
 	}
+}
+
+.columns-5 {
+	column-count: 5;
+	break-inside: avoid-column;
+
+	> * {
+		break-inside: avoid-column;
+	}
+
+	@media (max-width: 768px) {
+		column-count: 3;
+	}
+
+	@media (max-width: 480px) {
+		column-count: 2;
+	}
+}
+
+.columns-6 {
+	column-count: 6;
+	break-inside: avoid-column;
+
+	> * {
+		break-inside: avoid-column;
+	}
+
+	@media (max-width: 768px) {
+		column-count: 3;
+	}
+
+	@media (max-width: 480px) {
+		column-count: 2;
+	}
+}
+
+.float-clear {
+	clear: both;
 }
 
 /* *** */
@@ -361,6 +536,15 @@ input {
 	min-width: 0;
 }
 
+label {
+	font-weight: initial;
+}
+
+input[type=checkbox],
+input[type=radio] {
+	margin: 0;
+}
+
 main {
 	padding: 10px 15px;
 }
@@ -377,6 +561,10 @@ textarea {
 
 hr {
 	flex-shrink: 0;
+}
+
+.hr--dotted {
+	border-style: dashed;
 }
 
 /* custom scrollbars */
@@ -403,7 +591,7 @@ body {
 }
 
 body::-webkit-scrollbar {
-	width: 15px;
+	width: $w-scroll-body;
 }
 
 /* *** */
@@ -411,6 +599,10 @@ body::-webkit-scrollbar {
 /* Bootstrap overrides */
 .container {
 	position: relative;
+}
+
+.tooltip {
+	pointer-events: none;
 }
 
 .tooltip-inner {
@@ -452,7 +644,7 @@ body::-webkit-scrollbar {
 }
 
 .fade {
-	transition: opacity 0.05s linear;
+	transition: opacity $time-3-frames linear;
 }
 
 .dropdown-menu--side {
@@ -464,7 +656,7 @@ body::-webkit-scrollbar {
 
 .nav > li {
 	> a {
-		padding: 5px 15px 6px;
+		padding: 5px 14px 6px;
 
 		@media (min-width: 992px) {
 			border-top-left-radius: 0;
@@ -485,6 +677,8 @@ body::-webkit-scrollbar {
 	border-top: 0;
 
 	@media (min-width: 992px) {
+		border-left: 1px solid transparent;
+		border-right: 1px solid transparent;
 		border-bottom: 1px solid #999;
 	}
 }
@@ -1114,6 +1308,186 @@ body::-webkit-scrollbar {
 	width: 0.83333333333333% !important;
 }
 
+.b-0 {
+	border: 0 !important;
+}
+
+.b-1 {
+	border-width: ($spacer * 0.25) !important;
+}
+
+.b-2 {
+	border-width: ($spacer * 0.5) !important;
+}
+
+.b-3 {
+	border-width: $spacer !important;
+}
+
+.b-4 {
+	border-width: ($spacer * 1.5) !important;
+}
+
+.b-5 {
+	border-width: ($spacer * 3) !important;
+}
+
+.bt-0 {
+	border-top-width: 0 !important;
+}
+
+.bt-1 {
+	border-top-width: ($spacer * 0.25) !important;
+}
+
+.bt-2 {
+	border-top-width: ($spacer * 0.5) !important;
+}
+
+.bt-3 {
+	border-top-width: $spacer !important;
+}
+
+.bt-4 {
+	border-top-width: ($spacer * 1.5) !important;
+}
+
+.bt-5 {
+	border-top-width: ($spacer * 3) !important;
+}
+
+.br-0 {
+	border-right-width: 0 !important;
+}
+
+.br-1 {
+	border-right-width: ($spacer * 0.25) !important;
+}
+
+.br-2 {
+	border-right-width: ($spacer * 0.5) !important;
+}
+
+.br-3 {
+	border-right-width: $spacer !important;
+}
+
+.br-4 {
+	border-right-width: ($spacer * 1.5) !important;
+}
+
+.br-5 {
+	border-right-width: ($spacer * 3) !important;
+}
+
+.bb-0 {
+	border-bottom-width: 0 !important;
+}
+
+.bb-1 {
+	border-bottom-width: ($spacer * 0.25) !important;
+}
+
+.bb-2 {
+	border-bottom-width: ($spacer * 0.5) !important;
+}
+
+.bb-3 {
+	border-bottom-width: $spacer !important;
+}
+
+.bb-4 {
+	border-bottom-width: ($spacer * 1.5) !important;
+}
+
+.bb-5 {
+	border-bottom-width: ($spacer * 3) !important;
+}
+
+.bl-0 {
+	border-left-width: 0 !important;
+}
+
+.bl-1 {
+	border-left-width: ($spacer * 0.25) !important;
+}
+
+.bl-2 {
+	border-left-width: ($spacer * 0.5) !important;
+}
+
+.bl-3 {
+	border-left-width: $spacer !important;
+}
+
+.bl-4 {
+	border-left-width: ($spacer * 1.5) !important;
+}
+
+.bl-5 {
+	border-left-width: ($spacer * 3) !important;
+}
+
+.by-0 {
+	border-top-width: 0 !important;
+	border-bottom-width: 0 !important;
+}
+
+.by-1 {
+	border-top-width: ($spacer * 0.25) !important;
+	border-bottom-width: ($spacer * 0.25) !important;
+}
+
+.by-2 {
+	border-top-width: ($spacer * 0.5) !important;
+	border-bottom-width: ($spacer * 0.5) !important;
+}
+
+.by-3 {
+	border-top-width: $spacer !important;
+	border-bottom-width: $spacer !important;
+}
+
+.by-4 {
+	border-top-width: ($spacer * 1.5) !important;
+	border-bottom-width: ($spacer * 1.5) !important;
+}
+
+.by-5 {
+	border-top-width: ($spacer * 3) !important;
+	border-bottom-width: ($spacer * 3) !important;
+}
+
+.bx-0 {
+	border-right-width: 0 !important;
+	border-left-width: 0 !important;
+}
+
+.bx-1 {
+	border-right-width: ($spacer * 0.25) !important;
+	border-left-width: ($spacer * 0.25) !important;
+}
+
+.bx-2 {
+	border-right-width: ($spacer * 0.5) !important;
+	border-left-width: ($spacer * 0.5) !important;
+}
+
+.bx-3 {
+	border-right-width: $spacer !important;
+	border-left-width: $spacer !important;
+}
+
+.bx-4 {
+	border-right-width: ($spacer * 1.5) !important;
+	border-left-width: ($spacer * 1.5) !important;
+}
+
+.bx-5 {
+	border-right-width: ($spacer * 3) !important;
+	border-left-width: ($spacer * 3) !important;
+}
+
 .hr-0 {
 	margin-top: 0 !important;
 	margin-bottom: 0 !important;
@@ -1540,6 +1914,13 @@ body::-webkit-scrollbar {
 	padding-left: ($spacer * 3) !important;
 }
 
+// region
+.py-1px {
+	padding-top: 1px !important;
+	padding-bottom: 1px !important;
+}
+// endregion
+
 .dropdown-menu > li > a.dropdown-ext-link {
 	display: flex;
 	justify-content: space-between;
@@ -1569,15 +1950,28 @@ body::-webkit-scrollbar {
 }
 
 .dropdown-menu > .disabled > span {
-	color: #777;
+	pointer-events: none;
+	color: $rgb-ctx-item-text-disabled;
 
 	&:focus,
 	&:hover {
-		color: #777;
+		color: $rgb-ctx-item-text-disabled;
 		text-decoration: none;
 		cursor: not-allowed;
 		background-color: transparent;
 		background-image: none;
+	}
+}
+
+.dropdown-menu > .ctx-danger > span {
+	background: $rgb-btn-danger-bg-red;
+	color: white;
+
+	&:focus,
+	&:hover {
+		color: white;
+		text-decoration: none;
+		background-color: $rgb-btn-danger-border-red;
 	}
 }
 /* *** */
@@ -1627,7 +2021,149 @@ body::-webkit-scrollbar {
 	}
 }
 
+.border-dotted {
+	border-style: dotted !important;
+}
+
+// region Override defaults to better implement filter UI
+.input-group {
+	> input.form-control,
+	> label,
+	> button,
+	> a.btn {
+		border-radius: 0;
+		border-right: 0;
+
+		&:first-child {
+			border-top-left-radius: 3px;
+			border-bottom-left-radius: 3px;
+		}
+
+		&:last-child {
+			border-top-right-radius: 3px;
+			border-bottom-right-radius: 3px;
+			border-right: 1px solid $rgb-border-grey;
+		}
+	}
+
+	// The first horizontal row in multiple vertically-stacked input-group rows
+	&--top {
+		input.form-control,
+		label,
+		button,
+		a.btn {
+			&:first-child {
+				border-bottom-left-radius: 0;
+			}
+
+			&:last-child {
+				border-bottom-right-radius: 0;
+			}
+		}
+	}
+
+	&--middle {
+		input.form-control,
+		label,
+		button,
+		a.btn {
+			border-top: 0;
+
+			&:first-child {
+				border-radius: 0;
+			}
+
+			&:last-child {
+				border-radius: 0;
+			}
+		}
+	}
+
+	&--bottom {
+		input.form-control,
+		label,
+		button,
+		a.btn {
+			border-top: 0;
+
+			&:first-child {
+				border-top-left-radius: 0;
+			}
+
+			&:last-child {
+				border-top-right-radius: 0;
+			}
+		}
+	}
+}
+
+.night-mode .input-group {
+	> input.form-control,
+	> label,
+	> button,
+	> a.btn {
+		&:last-child {
+			border-right-color: $rgb-border-grey--night;
+		}
+	}
+}
+// endregion
+
 // redefine this here to ensure it overrides all the important display types above
-.hidden {
+.hidden,
+// the namespaced Foundry alias
+.ve-hidden {
 	display: none !important;
+}
+
+.mobile__ {
+	@media only screen and (min-width: $width-screen-sm) {
+		&visible {
+			display: none !important;
+		}
+	}
+
+	@media only screen and (max-width: $width-screen-sm) {
+		&hidden {
+			display: none !important;
+		}
+
+		&text-center {
+			text-align: center !important;
+		}
+
+		&flex-col {
+			display: flex !important;
+			flex-direction: column !important;
+		}
+
+		&flex-col-reverse {
+			display: flex !important;
+			flex-direction: column-reverse !important;
+		}
+
+		&flex-ai-start {
+			align-items: flex-start !important;
+		}
+
+		&w-100 {
+			width: 100% !important;
+		}
+
+		&max-w-100 {
+			max-width: 100% !important;
+		}
+
+		&m-1 {
+			margin: ($spacer * 0.25) !important;
+		}
+
+		&mb-2 {
+			margin-bottom: ($spacer * 0.5) !important;
+		}
+	}
+}
+
+.last-mr-0:last-child {
+	margin-right: 0 !important;
 }

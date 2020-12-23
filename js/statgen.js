@@ -27,7 +27,7 @@ class StatGen {
 
 		// load from local storage
 		try {
-			const savedState = await StorageUtil.pGet(POINTBUY_STORAGE);
+			const savedState = await StorageUtil.pGet(VeCt.STORAGE_POINTBUY);
 			if (StatGen.isValidState(savedState)) this.doLoadStateFrom(savedState);
 			else this.savedState = MiscUtil.copy(StatGen.DEFAULT_COSTS);
 		} catch (e) {
@@ -69,7 +69,7 @@ class StatGen {
 				} else {
 					return JqueryUtil.doToast({
 						content: `Invalid save file!`,
-						type: "danger"
+						type: "danger",
 					});
 				}
 			});
@@ -137,29 +137,31 @@ class StatGen {
 			t: this.savedState,
 			p: this.budget,
 			m: {
-				a: this.isAdvanced
-			}
+				a: this.isAdvanced,
+			},
 		})
 	}
 
 	doSaveState () {
 		if (!this.isInit) return;
-		StorageUtil.pSet(POINTBUY_STORAGE, this.getSaveableState());
+		StorageUtil.pSet(VeCt.STORAGE_POINTBUY, this.getSaveableState());
 	}
 
 	async pLoadRaceJson () {
 		const data = await DataUtil.loadJSON(RACE_JSON_URL);
 
-		let brew;
-		try {
-			brew = await BrewUtil.pAddBrewData();
-		} catch (e) {
-			return BrewUtil.pPurgeBrew(e);
-		}
+		const brew = await BrewUtil.pAddBrewData();
 
 		this.raceData = Renderer.race.mergeSubraces(data.race);
-		if (brew.race) this.raceData = this.raceData.concat(brew.race);
-		this.raceData = this.raceData.filter(it => !ExcludeUtil.isExcluded(it.name, "race", it.source));
+		if (brew.race) {
+			const cpyBrew = MiscUtil.copy(brew);
+			cpyBrew.race = Renderer.race.mergeSubraces(cpyBrew.race, {isAddBaseRaces: true});
+			this.raceData = this.raceData.concat(cpyBrew.race);
+		}
+		this.raceData = this.raceData.filter(it => {
+			const hash = UrlUtil.URL_TO_HASH_BUILDER[UrlUtil.PG_RACES](it);
+			return !ExcludeUtil.isExcluded(hash, "race", it.source);
+		});
 
 		$("#rollbutton").click(() => this.rollStats());
 
@@ -184,7 +186,8 @@ class StatGen {
 			while (tries > 0) {
 				tries--;
 
-				const $toBump = RollerUtil.rollOnArray($iptAttrs);
+				const $iptAttrsCanIncrease = $iptAttrs.filter(it => Number(it.val()) < this.statMax);
+				const $toBump = RollerUtil.rollOnArray($iptAttrsCanIncrease);
 				const oldVal = Number($toBump.val());
 				$toBump.val(oldVal + 1);
 				this.changeBase();
@@ -272,7 +275,7 @@ class StatGen {
 					if (lowest === 0) {
 						return JqueryUtil.doToast({
 							content: "Can't go any lower!",
-							type: "danger"
+							type: "danger",
 						});
 					}
 
@@ -373,7 +376,7 @@ class StatGen {
 		if ($("input.choose:checked").length > this.raceChoiceCount) return ele.checked = false;
 
 		const baseStat = this.raceStats[$(ele).closest("tr").attr("id")] || 0;
-		$(".racial", ele.parentNode.parentNode)
+		$(".racial", $(ele).closest("tr"))
 			.val(ele.checked ? baseStat + this.raceChoiceAmount : baseStat);
 		if (updateTotal) this.changeTotal();
 	}
@@ -434,7 +437,7 @@ class StatGen {
 
 	checkBudget (costBudget) {
 		if (!costBudget) costBudget = this.getCostAndBudget();
-		$(`#remaining`).toggleClass("error-background", costBudget.cost > costBudget.budget);
+		$(`#remaining`).toggleClass("form-control--error", costBudget.cost > costBudget.budget);
 	}
 
 	changeBase () {
@@ -459,21 +462,21 @@ class StatGen {
 	rollStats () {
 		const formula = $(`#stats-formula`).val();
 
-		const tree = Renderer.dice._parse2(formula);
+		const wrpTree = Renderer.dice.lang.getTree3(formula);
 
 		const $rolled = $("#rolled");
-		if (!tree) {
+		if (!wrpTree) {
 			$rolled.find("#rolls").prepend(`<p>Invalid dice formula!</p>`)
 		} else {
 			const rolls = [];
 			for (let i = 0; i < 6; i++) {
 				const meta = {};
-				meta.__total = tree.evl(meta);
+				meta.__total = wrpTree.tree.evl(meta);
 				rolls.push(meta);
 			}
 			rolls.sort((a, b) => SortUtil.ascSort(b.__total, a.__total));
 
-			$rolled.find("#rolls").prepend(`<p class="stat-roll-line">${rolls.map(r => `<span class="stat-roll-item" title="${r.rawText}">${r.__total}</span>`).join("")}</p>`);
+			$rolled.find("#rolls").prepend(`<p class="stat-roll-line">${rolls.map(r => `<span class="stat-roll-item" title="${r.text}">${r.__total}</span>`).join("")}</p>`);
 		}
 		$rolled.find("#rolls p:eq(15)").remove();
 	}
@@ -490,7 +493,7 @@ StatGen.DEFAULT_COSTS = {
 	12: 4,
 	13: 5,
 	14: 7,
-	15: 9
+	15: 9,
 };
 StatGen.DEFAULT_MIN = 8;
 StatGen.DEFAULT_MAX = 15;
@@ -498,16 +501,18 @@ StatGen.DEFAULT_POINTS = 27;
 
 const statGen = new StatGen();
 
-window.onload = async function load () {
+window.addEventListener("load", async () => {
 	await statGen.init();
 	hashchange();
-};
+
+	window.dispatchEvent(new Event("toolsLoaded"));
+});
 
 function hashchange () {
 	const VALID_HASHES = [
 		"rolled",
 		"array",
-		"pointbuy"
+		"pointbuy",
 	];
 
 	ExcludeUtil.pInitialise(); // don't await, as this is only used for search
@@ -519,7 +524,7 @@ function hashchange () {
 		window.history.replaceState(
 			{},
 			document.title,
-			`${location.origin}${location.pathname}#rolled`
+			`${location.origin}${location.pathname}#rolled`,
 		);
 		hashchange();
 	} else {

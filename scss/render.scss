@@ -4,6 +4,8 @@ Renderer
 
 @import 'vars';
 
+$rgb-inset-border: #656565;
+
 @mixin rd__h--large() {
 	color: $rgb-name-red;
 	font-family: 'Andada', serif;
@@ -26,6 +28,12 @@ Renderer
 
 .rd {
 	&__ {
+		&b {
+			p {
+				margin-bottom: 5px;
+			}
+		}
+
 		&b--0,
 		&b--1,
 		&b--2,
@@ -55,6 +63,19 @@ Renderer
 			margin-top: 5px;
 			margin-bottom: 10px;
 			padding-left: 24px;
+
+			// FIXME(future) alternately, `&:has(+ .rd__list) { margin-bottom: 0; }` when browser support exists for :has
+			+ .rd__list {
+				margin-top: -5px;
+			}
+
+			> .rd__list {
+				margin-bottom: 0;
+			}
+		}
+
+		&li {
+			margin-bottom: 5px;
 		}
 
 		&compact-stats {
@@ -67,7 +88,12 @@ Renderer
 
 		&title-link {
 			opacity: 0.3;
-			font-size: 1.6rem;
+			font-size: 14px;
+			font-weight: normal;
+
+			&--inset {
+				font-size: 12px;
+			}
 		}
 
 		&wrp-image {
@@ -88,7 +114,6 @@ Renderer
 
 		&wrp-gallery {
 			display: flex;
-			margin: 0 -5px;
 			flex-wrap: wrap;
 			justify-content: center;
 			align-items: flex-end;
@@ -99,10 +124,18 @@ Renderer
 			max-width: 33%;
 		}
 
-		&quote-by {
-			width: 100%;
-			text-align: right;
-			display: block;
+		&quote {
+			&-line {
+				&--last {
+					margin-bottom: 5px;
+				}
+			}
+
+			&-by {
+				width: 100%;
+				text-align: right;
+				display: block;
+			}
 		}
 
 		&p-cont-indent {
@@ -127,6 +160,20 @@ Renderer
 			display: inline;
 		}
 
+		&image-btn-viewer {
+			font-style: initial;
+		}
+
+		// Thicker scrollbars for viewer
+		&scroller-viewer {
+			scrollbar-width: auto;
+
+			&::-webkit-scrollbar {
+				width: 15px;
+				height: 15px;
+			}
+		}
+
 		&prerequisite {
 			font-style: italic;
 			display: block;
@@ -142,8 +189,8 @@ Renderer
 			padding: 0;
 			list-style: none;
 
-			> li {
-				margin-bottom: 0;
+			> .rd__li {
+				margin-bottom: 3px;
 
 				> * {
 					margin: 0 0 3px;
@@ -159,8 +206,8 @@ Renderer
 		&list-hang {
 			list-style: none;
 
-			// fixme?
-			> li > * {
+			// Firefox workaround; list bullets are pseudo-elements "::marker"
+			> li > *:not(::marker) {
 				text-indent: -1.1em;
 				margin-left: 1.1em;
 			}
@@ -213,10 +260,20 @@ Renderer
 		// inset headers
 		// statsBlockInset and statsBlockInsetReadaloud
 		&h--2-inset {
+			font-variant: small-caps;
+			font-weight: bolder;
+			font-size: 1.1em;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+
+		&h--2-flow-block {
 			display: block;
 			font-variant: small-caps;
 			font-weight: bolder;
 			font-size: 1.1em;
+			text-align: center;
 		}
 
 		// inline headers
@@ -232,11 +289,6 @@ Renderer
 			font-style: italic;
 		}
 
-		&b--3 {
-			margin-bottom: 3px;
-		}
-
-		&b-inset > p,
 		&b--3 > p,
 		&b--4 > p {
 			text-indent: 0.7em;
@@ -247,13 +299,18 @@ Renderer
 			}
 		}
 
+		&b-inset > p {
+			text-indent: 0.7em;
+			margin-bottom: 0;
+		}
+
 		&b-inset {
 			margin: 7px 15px;
 			padding: 5px 10px;
 			box-shadow: 0 0 4px 0 rgb(152, 142, 124);
-			border: 1px solid #656565;
-			border-top: 2px solid #656565;
-			border-bottom: 2px solid #656565;
+			border: 1px solid $rgb-inset-border;
+			border-top: 2px solid $rgb-inset-border;
+			border-bottom: 2px solid $rgb-inset-border;
 			background-color: #e9ecda;
 
 			> *:last-of-type {
@@ -262,16 +319,20 @@ Renderer
 
 			&--readaloud {
 				box-shadow: 0 0 4px 0 rgb(152, 142, 124);
-				border: 1px solid #656565;
-				border-left: 2px solid #656565;
-				border-right: 2px solid #656565;
+				border: 1px solid $rgb-inset-border;
+				border-left: 2px solid $rgb-inset-border;
+				border-right: 2px solid $rgb-inset-border;
 				background-color: #eef0f3;
+			}
+
+			&-inner {
+				margin-top: 10px;
 			}
 		}
 
 		&b-data {
 			box-shadow: 0 0 4px 0 rgb(152, 142, 124);
-			border: 1px solid #656565;
+			border: 1px solid $rgb-inset-border;
 			background-color: rgba(156, 150, 120, 0.1);
 		}
 
@@ -312,6 +373,99 @@ Renderer
 				animation-timing-function: linear;
 			}
 		}
+
+		&comic {
+			font-family: 'Blambot Casual', sans-serif;
+			color: #1942be;
+
+			&--h1 {
+				font-size: 140%;
+				font-variant: small-caps;
+			}
+
+			&--h2 {
+				font-size: 130%;
+			}
+
+			&--h3 {
+				font-size: 120%;
+			}
+
+			&--h4 {
+				font-size: 110%;
+			}
+
+			&--note {
+				opacity: 0.7;
+			}
+
+			&-img-speaker {
+				margin-top: -20px;
+				margin-bottom: -20px;
+
+				&--left {
+					float: left;
+					margin-right: 0;
+					margin-left: -20px;
+				}
+
+				&--right {
+					float: right;
+					margin-right: -20px;
+					margin-left: 0;
+				}
+
+				&::after {
+					content: '';
+					clear: both;
+					display: block;
+				}
+			}
+		}
+
+		&img {
+			&-small {
+				max-width: 25vw;
+				max-height: 25vh;
+			}
+		}
+
+		&s-v-flow {
+			height: 15px;
+			width: 0;
+			border-left: 1px solid $rgb-inset-border;
+			border-right: 1px solid $rgb-inset-border;
+			margin: 0 auto;
+		}
+
+		&b-flow {
+			margin: 0 15px;
+			padding: 5px 10px;
+			box-shadow: 0 0 4px 0 rgb(152, 142, 124);
+			border: 1px solid $rgb-inset-border;
+			border-top: 2px solid $rgb-inset-border;
+			border-bottom: 2px solid $rgb-inset-border;
+			background-color: #ece4da;
+
+			> *:last-of-type {
+				margin-bottom: 0;
+			}
+		}
+
+		&stats-name-page {
+			font-family: 'Convergence', Arial, sans-serif;
+			font-size: 12px;
+			color: $rgb-off-black;
+			font-weight: 100;
+		}
+
+		&pre-wrap {
+			white-space: pre-wrap;
+		}
+
+		&highlight {
+			background-color: $rgb-bg-highlight;
+		}
 	}
 
 	&-item__ {
@@ -334,18 +488,40 @@ td > .rd__b:last-child {
 	margin-bottom: 0;
 }
 
-.night-mode {
-	.rd {
-		&-item__ {
-			&type-rarity-attunement {
-				color: $rgb-night-font-color;
-			}
-		}
-
-		&-spell__ {
-			&level-school-ritual {
-				color: $rgb-night-font-color;
-			}
-		}
+// region Source colors
+.subclass-feature {
+	.rd__h--0,
+	.rd__h--1,
+	.rd__h--2 {
+		color: $rgb-subclass;
+		border-bottom-color: $rgb-subclass;
 	}
 }
+
+.spicy-sauce {
+	.rd__h--0,
+	.rd__h--1,
+	.rd__h--2 {
+		color: $rgb-subclass-ua;
+		border-bottom-color: $rgb-subclass-ua;
+	}
+}
+
+.spicy-sauce:not(.subclass-feature):not(.subclass-feature--sub) {
+	.rd__h--0,
+	.rd__h--1,
+	.rd__h--2 {
+		color: $rgb-class-ua;
+		border-bottom-color: $rgb-class-ua;
+	}
+}
+
+.refreshing-brew {
+	.rd__h--0,
+	.rd__h--1,
+	.rd__h--2 {
+		color: $rgb-class-brew;
+		border-bottom-color: $rgb-class-brew;
+	}
+}
+// endregion

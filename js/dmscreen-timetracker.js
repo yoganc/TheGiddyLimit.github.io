@@ -16,7 +16,7 @@ class TimeTrackerUtil {
 		return InputUiUtil.pGetUserDirection({
 			title: "Wind Bearing (Direction)",
 			default: def,
-			stepButtons: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+			stepButtons: ["N", "NE", "E", "SE", "S", "SW", "W", "NW"],
 		});
 	}
 
@@ -55,8 +55,7 @@ class TimeTrackerComponent extends BaseComponent {
 	_triggerMapUpdate (prop) {
 		this._state[prop] = Object.values(this._state[prop])
 			.filter(it => !it.isDeleted)
-			.map(it => ({[it.id]: it}))
-			.reduce((a, b) => Object.assign(a, b), {});
+			.mergeMap(it => ({[it.id]: it}));
 	}
 }
 
@@ -151,7 +150,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 			weekOfYear: 0,
 			seasonInfos: [],
 			yearInfos: [],
-			eraInfos: []
+			eraInfos: [],
 		};
 
 		let tmpDays = numDays;
@@ -255,7 +254,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 				phaseName: phaseNameSlug.split("-").map(it => it.uppercaseFirst()).join(" "),
 				phaseFirstDay: phaseFirstDay,
 				phaseIndex: ixPhase,
-				dayOfPeriod
+				dayOfPeriod,
 			}
 		});
 	}
@@ -296,7 +295,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 			...TimeTrackerBase._DEFAULT_STATE__DAY,
 			id: CryptUtil.uid(),
 			name: `${Parser.numberToText(i + 1)}day`.uppercaseFirst(),
-			pos: i
+			pos: i,
 		};
 	}
 
@@ -306,7 +305,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 			id: CryptUtil.uid(),
 			name: `${Parser.numberToText(i + 1)}uary`.uppercaseFirst(),
 			days: 30,
-			pos: i
+			pos: i,
 		};
 	}
 
@@ -314,7 +313,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 		const out = {
 			...MiscUtil.copy(TimeTrackerBase._DEFAULT_STATE__EVENT),
 			id: CryptUtil.uid(),
-			pos
+			pos,
 		};
 		if (year != null) out.when.year = year;
 		if (eventDay != null) out.when.day = eventDay;
@@ -329,7 +328,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 		const out = {
 			...MiscUtil.copy(TimeTrackerBase._DEFAULT_STATE__ENCOUNTER),
 			id: CryptUtil.uid(),
-			pos
+			pos,
 		};
 		if (year != null) out.when.year = year;
 		if (encounterDay != null) out.when.day = encounterDay;
@@ -346,7 +345,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 			id: CryptUtil.uid(),
 			name: `Season ${i + 1}`,
 			startDay: i * 90,
-			endDay: ((i + 1) * 90) - 1
+			endDay: ((i + 1) * 90) - 1,
 		};
 	}
 
@@ -355,7 +354,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 			...TimeTrackerBase._DEFAULT_STATE__YEAR,
 			id: CryptUtil.uid(),
 			name: `Year of the ${Parser.numberToText(i + 1).uppercaseFirst()}s`,
-			year: i
+			year: i,
 		};
 	}
 
@@ -367,7 +366,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 			name: `${Parser.getOrdinalForm(i + 1)} Era`,
 			abbreviation: `${symbol}E`,
 			startYear: i,
-			endYear: i
+			endYear: i,
 		};
 	}
 
@@ -375,7 +374,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 		return {
 			...TimeTrackerBase._DEFAULT_STATE__MOON,
 			id: CryptUtil.uid(),
-			name: `Moon ${i + 1}`
+			name: `Moon ${i + 1}`,
 		};
 	}
 
@@ -403,7 +402,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 				0, // dest x
 				0, // dest y
 				TimeTrackerBase._MOON_RENDER_RES, // dest w
-				TimeTrackerBase._MOON_RENDER_RES // dest h
+				TimeTrackerBase._MOON_RENDER_RES, // dest h
 			);
 		}
 
@@ -478,7 +477,7 @@ class TimeTrackerBase extends TimeTrackerComponent {
 		return {
 			seconds: numSecs,
 			minutes: numMinutes,
-			hours: numHours
+			hours: numHours,
 		};
 	}
 
@@ -488,31 +487,31 @@ class TimeTrackerBase extends TimeTrackerComponent {
 }
 TimeTrackerBase._DEFAULT_STATE__DAY = {
 	name: "Day",
-	isDeleted: false
+	isDeleted: false,
 };
 TimeTrackerBase._DEFAULT_STATE__MONTH = {
 	name: "Month",
 	days: 30,
-	isDeleted: false
+	isDeleted: false,
 };
 TimeTrackerBase._DEFAULT_STATE__EVENT = {
 	name: "Event",
 	entries: [],
 	when: {
 		year: 0,
-		day: 0
+		day: 0,
 	},
 	isDeleted: false,
-	isHidden: false
+	isHidden: false,
 };
 TimeTrackerBase._DEFAULT_STATE__ENCOUNTER = {
 	name: "Encounter",
 	when: {
 		year: 0,
-		day: 0
+		day: 0,
 	},
 	isDeleted: false,
-	countUses: 0
+	countUses: 0,
 };
 TimeTrackerBase._DEFAULT_STATE__SEASON = {
 	name: "Season",
@@ -520,26 +519,26 @@ TimeTrackerBase._DEFAULT_STATE__SEASON = {
 	endDay: 0,
 	sunriseHour: 6,
 	sunsetHour: 22,
-	isDeleted: false
+	isDeleted: false,
 };
 TimeTrackerBase._DEFAULT_STATE__YEAR = {
 	name: "Year",
 	year: 0,
-	isDeleted: false
+	isDeleted: false,
 };
 TimeTrackerBase._DEFAULT_STATE__ERA = {
 	name: "Era",
 	abbreviation: "E",
 	startYear: 0,
 	endYear: 0,
-	isDeleted: false
+	isDeleted: false,
 };
 TimeTrackerBase._DEFAULT_STATE__MOON = {
 	name: "Moon",
 	color: "#ffffff",
 	phaseOffset: 0,
 	period: 24,
-	isDeleted: false
+	isDeleted: false,
 };
 TimeTrackerBase._DEFAULT_STATE = {
 	time: 0,
@@ -566,31 +565,27 @@ TimeTrackerBase._DEFAULT_STATE = {
 	days: {
 		...[...new Array(7)]
 			.map((_, i) => TimeTrackerBase.getGenericDay(i))
-			.map(it => ({[it.id]: it}))
-			.reduce((a, b) => Object.assign(a, b), {})
+			.mergeMap(it => ({[it.id]: it})),
 	},
 	months: {
 		...[...new Array(12)]
 			.map((_, i) => TimeTrackerBase.getGenericMonth(i))
-			.map(it => ({[it.id]: it}))
-			.reduce((a, b) => Object.assign(a, b), {})
+			.mergeMap(it => ({[it.id]: it})),
 	},
 	events: {},
 	encounters: {},
 	seasons: {
 		...[...new Array(4)]
 			.map((_, i) => TimeTrackerBase.getGenericSeason(i))
-			.map(it => ({[it.id]: it}))
-			.reduce((a, b) => Object.assign(a, b), {})
+			.mergeMap(it => ({[it.id]: it})),
 	},
 	years: {},
 	eras: {},
 	moons: {
 		...[...new Array(1)]
 			.map((_, i) => TimeTrackerBase.getGenericMoon(i))
-			.map(it => ({[it.id]: it}))
-			.reduce((a, b) => Object.assign(a, b), {})
-	}
+			.mergeMap(it => ({[it.id]: it})),
+	},
 };
 TimeTrackerBase._MOON_PHASES = [
 	"new-moon",
@@ -600,7 +595,7 @@ TimeTrackerBase._MOON_PHASES = [
 	"full-moon",
 	"waning-gibbous",
 	"last-quarter",
-	"waning-crescent"
+	"waning-crescent",
 ];
 TimeTrackerBase._MOON_RENDER_RES = 32;
 TimeTrackerBase._MIN_TIME = 1;
@@ -621,7 +616,7 @@ class TimeTrackerRoot extends TimeTrackerBase {
 			...this.getBaseSaveableState(),
 			compClockState: this._compClock.getSaveableState(),
 			compCalendarState: this._compCalendar.getSaveableState(),
-			compSettingsState: this._compSettings.getSaveableState()
+			compSettingsState: this._compSettings.getSaveableState(),
 		};
 	}
 
@@ -723,7 +718,7 @@ class TimeTrackerRoot extends TimeTrackerBase {
 	_getDefaultState () {
 		return {
 			...MiscUtil.copy(super._getDefaultState()),
-			...MiscUtil.copy(TimeTrackerRoot._DEFAULT_STATE)
+			...MiscUtil.copy(TimeTrackerRoot._DEFAULT_STATE),
 		};
 	}
 }
@@ -747,7 +742,7 @@ TimeTrackerRoot._DEFAULT_STATE = {
 	isSeasonsSectionHidden: false,
 	isYearsSectionHidden: false,
 	isErasSectionHidden: false,
-	isMoonsSectionHidden: false
+	isMoonsSectionHidden: false,
 };
 
 class TimeTrackerRoot_Clock extends TimeTrackerComponent {
@@ -762,7 +757,7 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 	getSaveableState () {
 		return {
 			...this.getBaseSaveableState(),
-			compWeatherState: this._compWeather.getSaveableState()
+			compWeatherState: this._compWeather.getSaveableState(),
 		};
 	}
 
@@ -802,7 +797,7 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 				secsPerDay,
 				numSecs,
 				numMinutes,
-				numHours
+				numHours,
 			} = timeInfo;
 
 			return secsPerDay - (
@@ -821,7 +816,7 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 					numMinutes,
 					numSecs,
 					secsPerHour,
-					secsPerMinute
+					secsPerMinute,
 				} = timeInfo;
 
 				const sunriseHour = seasonInfos[0].sunriseHour;
@@ -912,7 +907,7 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 				secsPerHour,
 				secsPerMinute,
 				minutesPerHour,
-				hoursPerDay
+				hoursPerDay,
 			} = getTimeInfo({isBase: true});
 
 			const todayMoonInfos = getMoonInfos(numDays);
@@ -925,10 +920,10 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 					$wrpMoons.show();
 					todayMoonInfos.forEach(moon => {
 						$$`<div class="flex-v-center mr-2 ui-tip__parent">
-							${TimeTrackerBase.$getCvsMoon(moon).addClass("mr-2").addClass("dm-time__clock-moon-phase").attr("title", null)} 
+							${TimeTrackerBase.$getCvsMoon(moon).addClass("mr-2").addClass("dm-time__clock-moon-phase").title(null)}
 							<div class="flex-col ui-tip__child">
 								<div class="flex">${moon.name}</div>
-								<div class="flex small"><i class="mr-1 no-wrap">${moon.phaseName}</i><span class="text-muted no-wrap">(Day ${moon.dayOfPeriod + 1}/${moon.period})</span></div>				
+								<div class="flex small"><i class="mr-1 no-wrap">${moon.phaseName}</i><span class="text-muted no-wrap">(Day ${moon.dayOfPeriod + 1}/${moon.period})</span></div>
 							</div>
 						</div>`.appendTo($wrpMoons);
 					});
@@ -989,7 +984,7 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 					$wrpEventsEncounters.show();
 
 					todayEvents.forEach(event => {
-						const hoverMeta = Renderer.hover.getMakePredefinedHover({type: "entries", entries: []}, true);
+						const hoverMeta = Renderer.hover.getMakePredefinedHover({type: "entries", entries: []}, {isBookContent: true});
 						const doUpdateMeta = () => {
 							let name = event.name;
 							if (event.hasTime) {
@@ -1000,7 +995,7 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 								name,
 								type: "entries",
 								entries: event.entries,
-								data: {hoverTitle: name}
+								data: {hoverTitle: name},
 							};
 							Renderer.hover.updatePredefinedHover(hoverMeta.id, toShow);
 						};
@@ -1020,7 +1015,7 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 					});
 
 					todayEncounters.forEach(encounter => {
-						const hoverMeta = Renderer.hover.getMakePredefinedHover({type: "entries", entries: []}, true);
+						const hoverMeta = Renderer.hover.getMakePredefinedHover({type: "entries", entries: []}, {isBookContent: true});
 						const doUpdateMeta = () => {
 							let name = encounter.displayName != null ? encounter.displayName : (encounter.name || "(Unnamed Encounter)");
 							if (encounter.hasTime) {
@@ -1035,13 +1030,13 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 										type: "list",
 										items: encounter.data.l.items.map(it => {
 											const spl = decodeURIComponent(it.h).split("_");
-											const crPart = it.uid ? Parser.numberToCr(Number(it.uid.split("_").last())) : null;
+											const crPart = it.customHashId ? Parser.numberToCr(Number(it.customHashId.split("_").last())) : null;
 											const name = spl[0].toTitleCase();
 											return `${it.c || 1}× {@creature ${name}|${spl[1]}${crPart != null ? `|${name} (CR ${crPart})|${crPart}` : ""}}`;
-										})
-									}
+										}),
+									},
 								],
-								data: {hoverTitle: name}
+								data: {hoverTitle: name},
 							};
 							Renderer.hover.updatePredefinedHover(hoverMeta.id, toShow);
 						};
@@ -1158,9 +1153,9 @@ class TimeTrackerRoot_Clock extends TimeTrackerComponent {
 					</div>
 				</div>
 			</div>
-			
+
 			<div class="dm-time__bar-clock"></div>
-			
+
 			<div class="flex-col no-shrink pr-1 flex-h-center">
 				${$wrpDays}
 				<div class="small flex-vh-center btn-group">
@@ -1183,19 +1178,19 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 		this._parent = parent;
 		const {getTimeInfo} = parent;
 
-		const $btnRandomise = $(`<button class="btn btn-xxs btn-default dm-time__btn-random-weather" title="Randomize Weather (SHIFT to Reroll Using Previous Settings)"><span class="fal fa-dice"/></button>`)
+		const $btnRandomise = $(`<button class="btn btn-xxs btn-default dm-time__btn-random-weather" title="Roll Weather (SHIFT to Reroll Using Previous Settings)"><span class="fal fa-dice"/></button>`)
 			.click(async evt => {
 				const randomState = await TimeTrackerRoot_Clock_RandomWeather.pGetUserInput(
 					{
 						temperature: this._state.temperature,
 						precipitation: this._state.precipitation,
 						windDirection: this._state.windDirection,
-						windSpeed: this._state.windSpeed
+						windSpeed: this._state.windSpeed,
 					},
 					{
 						unitsWindSpeed: this._parent.get("unitsWindSpeed"),
-						isReroll: evt.shiftKey
-					}
+						isReroll: evt.shiftKey,
+					},
 				);
 				if (randomState == null) return;
 				Object.assign(this._state, randomState);
@@ -1211,12 +1206,12 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 						const meta = TimeTrackerRoot_Clock_Weather._TEMPERATURE_META[i];
 						return {
 							name: it.uppercaseFirst(),
-							buttonClass: meta.class,
-							iconClass: `fal ${meta.icon}`
+							buttonClassActive: meta.class ? `${meta.class} active` : null,
+							iconClass: `fal ${meta.icon}`,
 						}
 					}),
 					title: "Temperature",
-					default: ixCur
+					default: ixCur,
 				});
 
 				if (ix != null) this._state.temperature = TimeTrackerRoot_Clock_Weather._TEMPERATURES[ix];
@@ -1227,7 +1222,7 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 			if (!~ix) ix = 0;
 			const meta = TimeTrackerRoot_Clock_Weather._TEMPERATURE_META[ix];
 			$btnTemperature.addClass(meta.class);
-			$btnTemperature.attr("title", this._state.temperature.uppercaseFirst()).html(`<div class="fal ${meta.icon}"/>`);
+			$btnTemperature.title(this._state.temperature.uppercaseFirst()).html(`<div class="fal ${meta.icon}"/>`);
 		};
 		this._addHookBase("temperature", hookTemperature);
 		hookTemperature();
@@ -1236,7 +1231,7 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 			.click(async () => {
 				const {
 					numHours,
-					seasonInfos
+					seasonInfos,
 				} = getTimeInfo({isBase: true});
 				const useNightIcon = seasonInfos.length && !(numHours >= seasonInfos[0].sunriseHour && numHours < seasonInfos[0].sunsetHour);
 
@@ -1249,11 +1244,11 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 						return {
 							name: TimeTrackerUtil.revSlugToText(it),
 							iconClass: `fal ${useNightIcon && meta.iconNight ? meta.iconNight : meta.icon}`,
-							buttonClass: `btn-default`
+							buttonClass: `btn-default`,
 						}
 					}),
 					title: "Weather",
-					default: ixCur
+					default: ixCur,
 				});
 
 				if (ix != null) this._state.precipitation = TimeTrackerRoot_Clock_Weather._PRECIPICATION[ix];
@@ -1262,7 +1257,7 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 		const hookPrecipitation = (prop) => {
 			const {
 				numHours,
-				seasonInfos
+				seasonInfos,
 			} = getTimeInfo({isBase: true});
 
 			const precipitationTimeInfo = {numHours, seasonInfos};
@@ -1274,7 +1269,7 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 			let ix = TimeTrackerRoot_Clock_Weather._PRECIPICATION.indexOf(this._state.precipitation);
 			if (!~ix) ix = 0;
 			const meta = TimeTrackerRoot_Clock_Weather._PRECIPICATION_META[ix];
-			$btnPrecipitation.attr("title", TimeTrackerUtil.revSlugToText(this._state.precipitation)).html(`<div class="fal ${useNightIcon && meta.iconNight ? meta.iconNight : meta.icon}"/>`)
+			$btnPrecipitation.title(TimeTrackerUtil.revSlugToText(this._state.precipitation)).html(`<div class="fal ${useNightIcon && meta.iconNight ? meta.iconNight : meta.icon}"/>`)
 		};
 		this._addHookBase("precipitation", hookPrecipitation);
 		this._parent.addHook("time", hookPrecipitation);
@@ -1309,11 +1304,11 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 						return {
 							name: TimeTrackerUtil.revSlugToText(it),
 							buttonClass: `btn-default`,
-							iconContent: `<div class="mb-1 whitespace-normal dm-time__wind-speed">${this._parent.get("unitsWindSpeed") === "mph" ? `${meta.mph} mph` : `${meta.kmph} km/h`}</div>`
+							iconContent: `<div class="mb-1 whitespace-normal dm-time__wind-speed">${this._parent.get("unitsWindSpeed") === "mph" ? `${meta.mph} mph` : `${meta.kmph} km/h`}</div>`,
 						}
 					}),
 					title: "Wind Speed",
-					default: ixCur
+					default: ixCur,
 				});
 
 				if (ix != null) this._state.windSpeed = TimeTrackerRoot_Clock_Weather._WIND_SPEEDS[ix];
@@ -1322,7 +1317,7 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 			let ix = TimeTrackerRoot_Clock_Weather._WIND_SPEEDS.indexOf(this._state.windSpeed);
 			if (!~ix) ix = 0;
 			const meta = TimeTrackerRoot_Clock_Weather._WIND_SPEEDS_META[ix];
-			$btnWindSpeed.text(TimeTrackerUtil.revSlugToText(this._state.windSpeed)).attr("title", this._parent.get("unitsWindSpeed") === "mph" ? `${meta.mph} mph` : `${meta.kmph} km/h`);
+			$btnWindSpeed.text(TimeTrackerUtil.revSlugToText(this._state.windSpeed)).title(this._parent.get("unitsWindSpeed") === "mph" ? `${meta.mph} mph` : `${meta.kmph} km/h`);
 		};
 		this._addHookBase("windSpeed", hookWindSpeed);
 		this._parent.addHook("unitsWindSpeed", hookWindSpeed);
@@ -1369,7 +1364,7 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 						const toShow = {
 							type: "entries",
 							entries: allEntries,
-							data: {hoverTitle: `Weather Effects`}
+							data: {hoverTitle: `Weather Effects`},
 						};
 						Renderer.hover.updatePredefinedHover(hoverMetaEnvEffects.id, toShow);
 						hoverMetaEnvEffects.mouseOver(evt, $hovEnvEffects[0]);
@@ -1386,14 +1381,14 @@ class TimeTrackerRoot_Clock_Weather extends TimeTrackerComponent {
 		$$`<div class="flex-col w-100 flex-vh-center">
 			<div class="flex-vh-center small mb-1"><span class="small-caps mr-2">Weather</span>${$btnRandomise}</div>
 			<div class="mb-2">${$btnTemperature}${$btnPrecipitation}</div>
-			
+
 			<div class="flex-col flex-vh-center">
 				<div class="small small-caps">Wind</div>
-				<div class="mb-1">${$btnWindDirection}</div> 
+				<div class="mb-1">${$btnWindDirection}</div>
 				<div>${$btnWindSpeed}</div>
 			</div>
-			
-			${$wrpEnvEffects} 
+
+			${$wrpEnvEffects}
 		</div>`.appendTo($parent);
 	}
 
@@ -1404,7 +1399,7 @@ TimeTrackerRoot_Clock_Weather._TEMPERATURES = [
 	"cold",
 	"mild",
 	"hot",
-	"scorching"
+	"scorching",
 ];
 TimeTrackerRoot_Clock_Weather._PRECIPICATION = [
 	"sunny",
@@ -1414,7 +1409,7 @@ TimeTrackerRoot_Clock_Weather._PRECIPICATION = [
 	"rain-heavy",
 	"thunderstorm",
 	"hail",
-	"snow"
+	"snow",
 ];
 TimeTrackerRoot_Clock_Weather._WIND_SPEEDS = [
 	"calm",
@@ -1425,20 +1420,20 @@ TimeTrackerRoot_Clock_Weather._WIND_SPEEDS = [
 	"gale",
 	"gale-severe",
 	"storm",
-	"hurricane"
+	"hurricane",
 ];
 TimeTrackerRoot_Clock_Weather._DEFAULT_STATE = {
 	temperature: TimeTrackerRoot_Clock_Weather._TEMPERATURES[2],
 	precipitation: TimeTrackerRoot_Clock_Weather._PRECIPICATION[0],
 	windDirection: 0,
-	windSpeed: TimeTrackerRoot_Clock_Weather._WIND_SPEEDS[0]
+	windSpeed: TimeTrackerRoot_Clock_Weather._WIND_SPEEDS[0],
 };
 TimeTrackerRoot_Clock_Weather._TEMPERATURE_META = [
 	{icon: "fa-temperature-frigid", class: "btn-primary"},
 	{icon: "fa-thermometer-quarter", class: "btn-info"},
-	{icon: "fa-thermometer-half", class: "btn-default"},
+	{icon: "fa-thermometer-half"},
 	{icon: "fa-thermometer-three-quarters", class: "btn-warning"},
-	{icon: "fa-temperature-hot", class: "btn-danger"}
+	{icon: "fa-temperature-hot", class: "btn-danger"},
 ];
 TimeTrackerRoot_Clock_Weather._PRECIPICATION_META = [
 	{icon: "fa-sun", iconNight: "fa-moon"},
@@ -1448,7 +1443,7 @@ TimeTrackerRoot_Clock_Weather._PRECIPICATION_META = [
 	{icon: "fa-cloud-showers-heavy"},
 	{icon: "fa-thunderstorm"},
 	{icon: "fa-cloud-hail"},
-	{icon: "fa-cloud-snow"}
+	{icon: "fa-cloud-snow"},
 ];
 TimeTrackerRoot_Clock_Weather._WIND_SPEEDS_META = [ // (Beaufort scale equivalent)
 	{mph: "<1", kmph: "<2"}, // 0-2
@@ -1459,7 +1454,7 @@ TimeTrackerRoot_Clock_Weather._WIND_SPEEDS_META = [ // (Beaufort scale equivalen
 	{mph: "39-46", kmph: "62-74"}, // 8
 	{mph: "47-54", kmph: "75-88"}, // 9
 	{mph: "55-72", kmph: "89-117"}, // 10-11
-	{mph: "≥73", kmph: "≥118"} // 12
+	{mph: "≥73", kmph: "≥118"}, // 12
 ];
 
 class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
@@ -1479,11 +1474,11 @@ class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
 					temperature: it,
 					name: it.uppercaseFirst(),
 					buttonClass: meta.class,
-					iconClass: `fal ${meta.icon}`
+					iconClass: `fal ${meta.icon}`,
 				}
 			})
 			.map(v => {
-				const $btn = $$`<div class="m-2 btn ${v.buttonClass} ui-icn__btn flex-col flex-h-center">
+				const $btn = $$`<div class="m-2 btn btn-default ui__btn-xxl-square flex-col flex-h-center">
 						<div class="ui-icn__wrp-icon ${v.iconClass} mb-1"></div>
 						<div class="whitespace-normal w-100">${v.name}</div>
 					</div>`
@@ -1492,7 +1487,14 @@ class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
 						else this._state.allowedTemperatures = [...this._state.allowedTemperatures, v.temperature];
 					});
 
-				const hookTemperature = () => $btn.toggleClass("active", this._state.allowedTemperatures.includes(v.temperature));
+				const hookTemperature = () => {
+					const isActive = this._state.allowedTemperatures.includes(v.temperature);
+					if (v.buttonClass) {
+						$btn.toggleClass("btn-default", !isActive);
+						$btn.toggleClass(v.buttonClass, isActive);
+					}
+					$btn.toggleClass("active", isActive);
+				};
 				this._addHookBase("allowedTemperatures", hookTemperature);
 				hookTemperature();
 
@@ -1505,11 +1507,11 @@ class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
 				return {
 					precipitation: it,
 					name: TimeTrackerUtil.revSlugToText(it),
-					iconClass: `fal ${meta.icon}`
+					iconClass: `fal ${meta.icon}`,
 				}
 			})
 			.map(v => {
-				const $btn = $$`<div class="m-2 btn btn-default ui-icn__btn flex-col flex-h-center">
+				const $btn = $$`<div class="m-2 btn btn-default ui__btn-xxl-square flex-col flex-h-center">
 						<div class="ui-icn__wrp-icon ${v.iconClass} mb-1"></div>
 						<div class="whitespace-normal w-100">${v.name}</div>
 					</div>`
@@ -1542,11 +1544,11 @@ class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
 				return {
 					speed: it,
 					name: TimeTrackerUtil.revSlugToText(it),
-					iconContent: `<div class="mb-1 whitespace-normal dm-time__wind-speed">${this._unitsWindSpeed === "mph" ? `${meta.mph} mph` : `${meta.kmph} km/h`}</div>`
+					iconContent: `<div class="mb-1 whitespace-normal dm-time__wind-speed">${this._unitsWindSpeed === "mph" ? `${meta.mph} mph` : `${meta.kmph} km/h`}</div>`,
 				}
 			})
 			.map(v => {
-				const $btn = $$`<div class="m-2 btn btn-default ui-icn__btn flex-col flex-h-center">
+				const $btn = $$`<div class="m-2 btn btn-default ui__btn-xxl-square flex-col flex-h-center">
 						${v.iconContent}
 						<div class="whitespace-normal w-100">${v.name}</div>
 					</div>`
@@ -1562,7 +1564,7 @@ class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
 				return $btn;
 			});
 
-		const $btnOk = $(`<button class="btn btn-default">Confirm</button>`)
+		const $btnOk = $(`<button class="btn btn-default">Confirm and Roll Weather</button>`)
 			.click(() => {
 				if (!this._state.allowedTemperatures.length || !this._state.allowedPrecipitations.length || !this._state.allowedWindSpeeds.length) {
 					JqueryUtil.doToast({content: `Please select allowed values for all sections!`, type: "warning"})
@@ -1662,7 +1664,7 @@ class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
 				temperature: isNewTemp ? RollerUtil.rollOnArray(inputs.allowedTemperatures) : curWeather.temperature,
 				precipitation: isNewPrecipitation ? RollerUtil.rollOnArray(inputs.allowedPrecipitations) : curWeather.precipitation,
 				windDirection,
-				windSpeed
+				windSpeed,
 			}
 		};
 
@@ -1671,11 +1673,11 @@ class TimeTrackerRoot_Clock_RandomWeather extends BaseComponent {
 		return new Promise(resolve => {
 			const {$modalInner, doClose} = UiUtil.getShowModal({
 				title: "Random Weather Configuration",
-				isLarge: true,
+				isUncappedHeight: true,
 				cbClose: (isDataEntered) => {
 					if (!isDataEntered) resolve(null);
 					else resolve(getWeather());
-				}
+				},
 			});
 
 			comp.render($modalInner, doClose);
@@ -1690,7 +1692,7 @@ TimeTrackerRoot_Clock_RandomWeather._DEFAULT_STATE = {
 	allowedTemperatures: [...TimeTrackerRoot_Clock_Weather._TEMPERATURES],
 	allowedPrecipitations: [...TimeTrackerRoot_Clock_Weather._PRECIPICATION],
 	prevailingWindDirection: 0,
-	allowedWindSpeeds: [...TimeTrackerRoot_Clock_Weather._WIND_SPEEDS]
+	allowedWindSpeeds: [...TimeTrackerRoot_Clock_Weather._WIND_SPEEDS],
 };
 TimeTrackerRoot_Clock_RandomWeather._STORAGE_KEY = "TimeTracker_RandomWeatherModal";
 
@@ -1718,12 +1720,12 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			this._parent.component,
 			"isBrowseMode",
 			{
-				$ele: $(`<button class="btn btn-xs btn-default">Browse</button>`),
+				$ele: $(`<button class="btn btn-xs btn-default" title="When enabled, the current calendar view will be saved. You can then freely browse. When you're done, disable Browse mode to return to your original view.">Browse</button>`),
 				fnHookPost: val => {
 					if (val) this._parent.set("browseTime", this._parent.get("time"));
 					else this._parent.set("browseTime", null);
-				}
-			}
+				},
+			},
 		);
 
 		const $wrpCalendar = $(`<div class="overflow-y-auto smooth-scroll"/>`);
@@ -1744,7 +1746,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				numDays,
 				yearInfos,
 				eraInfos,
-				secsPerDay
+				secsPerDay,
 			} = timeInfo;
 
 			const renderMeta = {
@@ -1760,7 +1762,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				numDays,
 				yearInfos,
 				eraInfos,
-				secsPerDay
+				secsPerDay,
 			};
 			if (prop === "time" && CollectionUtil.deepEquals(lastRenderMeta, renderMeta)) return;
 			lastRenderMeta = renderMeta;
@@ -1782,8 +1784,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				},
 				{
 					hasColumnLabels: this._parent.get("hasCalendarLabelsColumns"),
-					hasRowLabels: this._parent.get("hasCalendarLabelsRows")
-				}
+					hasRowLabels: this._parent.get("hasCalendarLabelsRows"),
+				},
 			);
 		};
 		this._parent.addHook("time", hookCalendar);
@@ -1820,12 +1822,12 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 		opts = opts || {};
 		const {doModTime, getTimeInfo} = parent;
 
-		const $btnSubDay = opts.isHideDays ? null : $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Day (SHIFT for 5)">-D</button>`)
+		const $btnSubDay = opts.isHideDays ? null : $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Day (SHIFT for 5)">\u2012D</button>`)
 			.click(evt => doModTime(-1 * getTimeInfo().secsPerDay * (evt.shiftKey ? 5 : 1)));
 		const $btnAddDay = opts.isHideDays ? null : $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust" title="Add Day (SHIFT for 5)">D+</button>`)
 			.click(evt => doModTime(getTimeInfo().secsPerDay * (evt.shiftKey ? 5 : 1)));
 
-		const $btnSubWeek = opts.isHideWeeks ? null : $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Week (SHIFT for 5)">-W</button>`)
+		const $btnSubWeek = opts.isHideWeeks ? null : $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Week (SHIFT for 5)">\u2012W</button>`)
 			.click(evt => doModTime(-1 * getTimeInfo().secsPerWeek * (evt.shiftKey ? 5 : 1)));
 		const $btnAddWeek = opts.isHideWeeks ? null : $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust" title="Add Week (SHIFT for 5)">W+</button>`)
 			.click(evt => doModTime(getTimeInfo().secsPerWeek * (evt.shiftKey ? 5 : 1)));
@@ -1836,7 +1838,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 					secsPerDay,
 					monthInfo,
 					nextMonthInfo,
-					date
+					date,
 				} = getTimeInfo();
 
 				const dateNextMonth = date > nextMonthInfo.days ? nextMonthInfo.days - 1 : date;
@@ -1849,7 +1851,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				const {
 					secsPerDay,
 					prevMonthInfo,
-					date
+					date,
 				} = getTimeInfo();
 
 				const datePrevMonth = date > prevMonthInfo.days ? prevMonthInfo.days - 1 : date;
@@ -1877,12 +1879,12 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			}
 		};
 
-		const $btnSubMonth = $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Month (SHIFT for 5)">-M</button>`)
+		const $btnSubMonth = $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Month (SHIFT for 5)">\u2012M</button>`)
 			.click(evt => doModMonths(evt.shiftKey ? -5 : -1));
 		const $btnAddMonth = $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust" title="Add Month (SHIFT for 5)">M+</button>`)
 			.click(evt => doModMonths(evt.shiftKey ? 5 : 1));
 
-		const $btnSubYear = $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Year (SHIFT for 5)">-Y</button>`)
+		const $btnSubYear = $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust"  title="Subtract Year (SHIFT for 5)">\u2012Y</button>`)
 			.click(evt => doModTime(-1 * getTimeInfo().secsPerYear * (evt.shiftKey ? 5 : 1)));
 		const $btnAddYear = $(`<button class="btn btn-xs btn-default dm-time__btn-date-adjust" title="Add Year (SHIFT for 5)">Y+</button>`)
 			.click(evt => doModTime(getTimeInfo().secsPerYear * (evt.shiftKey ? 5 : 1)));
@@ -1891,7 +1893,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			.change(() => {
 				const {
 					secsPerYear,
-					year
+					year,
 				} = getTimeInfo();
 				const nxt = UiUtil.strToInt($iptYear.val(), 1) - 1;
 				$iptYear.val(nxt + 1);
@@ -1902,7 +1904,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			.change(() => {
 				const {
 					month,
-					monthsPerYear
+					monthsPerYear,
 				} = getTimeInfo();
 				const nxtRaw = UiUtil.strToInt($iptMonth.val(), 1) - 1;
 				const nxt = Math.max(0, Math.min(monthsPerYear - 1, nxtRaw));
@@ -1915,7 +1917,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				const {
 					secsPerDay,
 					date,
-					monthInfo
+					monthInfo,
 				} = getTimeInfo();
 				const nxtRaw = UiUtil.strToInt($iptDay.val(), 1) - 1;
 				const nxt = Math.max(0, Math.min(monthInfo.days - 1, nxtRaw));
@@ -1928,8 +1930,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			<div class="flex btn-group mr-2">
 				${$btnSubYear}
 				${$btnSubMonth}
-				${$btnSubWeek} 
-				${$btnSubDay} 
+				${$btnSubWeek}
+				${$btnSubDay}
 			</div>
 			<div class="mr-2 flex-v-center">
 				${$iptYear}
@@ -1939,10 +1941,10 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				${$iptDay}
 			</div>
 			<div class="flex-h-right btn-group">
-				${$btnAddDay} 
-				${$btnAddWeek} 
+				${$btnAddDay}
+				${$btnAddWeek}
 				${$btnAddMonth}
-				${$btnAddYear} 
+				${$btnAddYear}
 			</div>
 		</div>`;
 
@@ -1970,7 +1972,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			monthStartDay,
 			daysPerWeek,
 			monthStartDayOfYear,
-			numDays
+			numDays,
 		} = timeInfo;
 
 		$wrpCalendar.empty().css({display: "grid"});
@@ -1986,7 +1988,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						"grid-column-start": `${i + gridOffsetX + 1}`,
 						"grid-column-end": `${i + gridOffsetX + 2}`,
 						"grid-row-start": `1`,
-						"grid-row-end": `2`
+						"grid-row-end": `2`,
 					})
 					.appendTo($wrpCalendar)
 			});
@@ -2005,7 +2007,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						"grid-column-start": `${xPos + 1}`,
 						"grid-column-end": `${xPos + 2}`,
 						"grid-row-start": `${yPos + gridOffsetY + 1}`,
-						"grid-row-end": `${yPos + gridOffsetY + 2}`
+						"grid-row-end": `${yPos + gridOffsetY + 2}`,
 					})
 					.appendTo($wrpCalendar)
 			}
@@ -2039,7 +2041,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				$ele = $$`<div class="dm-time__disp-calendar-day btn-xxs m-1 relative ${i === date && !opts.isHideDay ? "dm-time__disp-calendar-day--active" : ""}">
 					${i + 1}
 					${events.length ? `<div class="dm-time__disp-day-entry dm-time__disp-day-entry--event" title="Has Events">*</div>` : ""}
-					${encounters.length ? `<div class="dm-time__disp-day-entry dm-time__disp-day-entry--encounter" title="Has Encounters">*</div>` : ""} 
+					${encounters.length ? `<div class="dm-time__disp-day-entry dm-time__disp-day-entry--encounter" title="Has Encounters">*</div>` : ""}
 					${moonPart}
 				</div>`.click((evt) => fnClickDay(evt, year, eventDay, moonDay));
 			}
@@ -2047,7 +2049,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				"grid-column-start": `${xPos + gridOffsetX + 1}`,
 				"grid-column-end": `${xPos + gridOffsetX + 2}`,
 				"grid-row-start": `${yPos + gridOffsetY + 1}`,
-				"grid-row-end": `${yPos + gridOffsetY + 2}`
+				"grid-row-end": `${yPos + gridOffsetY + 2}`,
 			});
 			$wrpCalendar.append($ele);
 		}
@@ -2061,7 +2063,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			year,
 			dayOfYear,
 			secsPerYear,
-			secsPerDay
+			secsPerDay,
 		} = getTimeInfo({isBase: true});
 
 		const daySecs = (eventYear * secsPerYear) + (eventDay * secsPerDay);
@@ -2101,22 +2103,22 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 
 		const {year, dayInfo, date, monthInfo, seasonInfos, yearInfos, eraInfos} = getTimeInfo({year: eventYear, dayOfYear: eventDay});
 
-		const pHandleContextSwitch = async (evt, ele, $invokedOn, $selectedMenu, nuEncounter) => {
-			switch (Number($selectedMenu.data("ctx-id"))) {
+		const pHandleContextSwitch = async (mode, nuEncounter) => {
+			switch (mode) {
 				case 0: {
 					const savedState = await EncounterUtil.pGetInitialState();
 					if (savedState && savedState.data) {
 						const encounter = savedState.data;
 						const name = await InputUiUtil.pGetUserString({
 							title: "Enter Encounter Name",
-							default: EncounterUtil.getEncounterName(encounter)
+							default: EncounterUtil.getEncounterName(encounter),
 						});
 						nuEncounter.name = name || "(Unnamed encounter)";
 						nuEncounter.data = encounter;
 					} else {
 						return JqueryUtil.doToast({
 							content: `No saved encounter! Please first go to the Bestiary and create one.`,
-							type: "warning"
+							type: "warning",
 						});
 					}
 					break;
@@ -2137,7 +2139,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						$elePost: $$`<label class="flex-label flex-h-center w-100 mb-2">
 								<span class="mr-2 help" title="Turning this on will make a copy of the encounter as it currently exists, allowing the original to be modified or deleted without affecting the copy. Leaving this off will instead keep a reference to the encounter, so any change to the encounter will be reflected here.">Make Copy of Encounter</span>
 								${$cbCopy}
-							</label>`
+							</label>`,
 					});
 					if (selected != null) {
 						const key = savedKeys[selected.ix];
@@ -2157,7 +2159,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 					if (json) {
 						const name = await InputUiUtil.pGetUserString({
 							title: "Enter Encounter Name",
-							default: EncounterUtil.getEncounterName(json)
+							default: EncounterUtil.getEncounterName(json),
 						});
 						nuEncounter.name = name || "(Unnamed Encounter)";
 						nuEncounter.data = json;
@@ -2166,63 +2168,100 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				}
 			}
 
-			this._parent.set("encounters", [...Object.values(this._parent.get("encounters")), nuEncounter].map(it => ({[it.id]: it})).reduce((a, b) => Object.assign(a, b), {}));
+			this._parent.set("encounters", [...Object.values(this._parent.get("encounters")), nuEncounter].mergeMap(it => ({[it.id]: it})));
 		};
 
-		const ctxEncounterId = ContextUtil.getNextGenericMenuId();
-		ContextUtil.doInitContextMenu(
-			ctxEncounterId,
-			(evt, ele, $invokedOn, $selectedMenu) => {
-				const nxtPos = Object.keys(this._parent.get("encounters")).length;
-				const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, year, eventDay);
+		const menuEncounter = ContextUtil.getMenu([
+			new ContextUtil.Action(
+				"From Current Bestiary Encounter",
+				() => {
+					const nxtPos = Object.keys(this._parent.get("encounters")).length;
+					const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, year, eventDay);
+					return pHandleContextSwitch(0, nuEncounter);
+				},
+			),
+			new ContextUtil.Action(
+				"From Saved Bestiary Encounter",
+				() => {
+					const nxtPos = Object.keys(this._parent.get("encounters")).length;
+					const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, year, eventDay);
+					return pHandleContextSwitch(1, nuEncounter);
+				},
+			),
+			new ContextUtil.Action(
+				"From Bestiary Encounter File",
+				() => {
+					const nxtPos = Object.keys(this._parent.get("encounters")).length;
+					const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, year, eventDay);
+					return pHandleContextSwitch(2, nuEncounter);
+				},
+			),
+		]);
 
-				return pHandleContextSwitch(evt, ele, $invokedOn, $selectedMenu, nuEncounter);
-			},
-			["From Current Bestiary Encounter", "From Saved Bestiary Encounter", "From Bestiary Encounter File"]
-		);
-		const ctxEncounterAtTimeId = ContextUtil.getNextGenericMenuId();
-		ContextUtil.doInitContextMenu(
-			ctxEncounterAtTimeId,
-			async (evt, ele, $invokedOn, $selectedMenu) => {
-				const chosenTimeInfo = await this._render_pGetEventTimeOfDay(eventYear, eventDay, evt.shiftKey);
-				if (chosenTimeInfo == null) return;
+		const menuEncounterAtTime = ContextUtil.getMenu([
+			new ContextUtil.Action(
+				"From Current Bestiary Encounter",
+				async evt => {
+					const chosenTimeInfo = await this._render_pGetEventTimeOfDay(eventYear, eventDay, evt.shiftKey);
+					if (chosenTimeInfo == null) return;
 
-				const nxtPos = Object.keys(this._parent.get("encounters")).length;
-				const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, chosenTimeInfo.year, chosenTimeInfo.eventDay, chosenTimeInfo.timeOfDay);
+					const nxtPos = Object.keys(this._parent.get("encounters")).length;
+					const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, chosenTimeInfo.year, chosenTimeInfo.eventDay, chosenTimeInfo.timeOfDay);
 
-				return pHandleContextSwitch(evt, ele, $invokedOn, $selectedMenu, nuEncounter);
-			},
-			[
-				{
-					text: "From Current Bestiary Encounter",
-					title: "SHIFT to Add at Current Time"
+					return pHandleContextSwitch(0, nuEncounter);
 				},
 				{
-					text: "From Saved Bestiary Encounter",
-					title: "SHIFT to Add at Current Time"
+					title: "SHIFT to Add at Current Time",
+				},
+			),
+			new ContextUtil.Action(
+				"From Saved Bestiary Encounter",
+				async evt => {
+					const chosenTimeInfo = await this._render_pGetEventTimeOfDay(eventYear, eventDay, evt.shiftKey);
+					if (chosenTimeInfo == null) return;
+
+					const nxtPos = Object.keys(this._parent.get("encounters")).length;
+					const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, chosenTimeInfo.year, chosenTimeInfo.eventDay, chosenTimeInfo.timeOfDay);
+
+					return pHandleContextSwitch(1, nuEncounter);
 				},
 				{
-					text: "From Bestiary Encounter File",
-					title: "SHIFT to Add at Current Time"
-				}
-			]
-		);
+					title: "SHIFT to Add at Current Time",
+				},
+			),
+			new ContextUtil.Action(
+				"From Bestiary Encounter File",
+				async evt => {
+					const chosenTimeInfo = await this._render_pGetEventTimeOfDay(eventYear, eventDay, evt.shiftKey);
+					if (chosenTimeInfo == null) return;
+
+					const nxtPos = Object.keys(this._parent.get("encounters")).length;
+					const nuEncounter = TimeTrackerBase.getGenericEncounter(nxtPos, chosenTimeInfo.year, chosenTimeInfo.eventDay, chosenTimeInfo.timeOfDay);
+
+					return pHandleContextSwitch(2, nuEncounter);
+				},
+				{
+					title: "SHIFT to Add at Current Time",
+				},
+			),
+		]);
+
 		const $btnAddEncounter = $(`<button class="btn btn-xs btn-success"><span class="glyphicon glyphicon-plus"/> Add Encounter</button>`)
-			.click(evt => ContextUtil.handleOpenContextMenu(evt, $btnAddEncounter, ctxEncounterId));
+			.click(evt => ContextUtil.pOpenMenu(evt, menuEncounter));
 
 		const $btnAddEncounterAtTime = $(`<button class="btn btn-xs btn-success">At Time...</button>`)
-			.click(evt => ContextUtil.handleOpenContextMenu(evt, $btnAddEncounterAtTime, ctxEncounterAtTimeId));
+			.click(evt => ContextUtil.pOpenMenu(evt, menuEncounterAtTime));
 
 		const {$modalInner, doClose} = UiUtil.getShowModal({
 			title: `${TimeTrackerBase.formatDateInfo(dayInfo, date, monthInfo, seasonInfos)}\u2014${TimeTrackerBase.formatYearInfo(year, yearInfos, eraInfos)}`,
 			cbClose: () => {
 				this._parent.removeHook("events", hookEvents);
-				ContextUtil.doTeardownContextMenu(ctxEncounterId);
+				ContextUtil.deleteMenu(menuEncounter);
 			},
 			zIndex: TimeTrackerRoot_Calendar._Z_INDEX_MODAL,
-			isLarge: true,
-			fullHeight: true,
-			titleSplit: $btnJumpToDay
+			isUncappedHeight: true,
+			isHeight100: true,
+			$titleSplit: $btnJumpToDay,
 		});
 
 		const $hrMoons = $(`<hr class="hr-2 no-shrink">`);
@@ -2232,10 +2271,10 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			$wrpMoons.empty();
 			todayMoonInfos.forEach(moon => {
 				$$`<div class="flex-v-center mr-2">
-					${TimeTrackerBase.$getCvsMoon(moon).addClass("mr-2")} 
+					${TimeTrackerBase.$getCvsMoon(moon).addClass("mr-2")}
 					<div class="flex-col">
 						<div class="flex">${moon.name}</div>
-						<div class="flex small"><i class="mr-1">${moon.phaseName}</i><span class="text-muted">(Day ${moon.dayOfPeriod + 1}/${moon.period})</span></div>				
+						<div class="flex small"><i class="mr-1">${moon.phaseName}</i><span class="text-muted">(Day ${moon.dayOfPeriod + 1}/${moon.period})</span></div>
 					</div>
 				</div>`.appendTo($wrpMoons);
 			});
@@ -2333,7 +2372,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						(nxtTimeSecs) => {
 							encounter.timeOfDaySecs = nxtTimeSecs;
 							this._parent.triggerMapUpdate("encounters");
-						}
+						},
 					);
 				}
 
@@ -2344,11 +2383,11 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 							fnClick: (evt, eventYear, eventDay) => {
 								encounter.when = {
 									day: eventDay,
-									year: eventYear
+									year: eventYear,
 								};
 								this._parent.triggerMapUpdate("encounters");
 							},
-							prop: "encounters"
+							prop: "encounters",
 						});
 					});
 
@@ -2360,13 +2399,13 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 
 				$$`<div class="flex-v-center w-100 py-1 px-2 stripe-even">
 					${$iptName}
-					${$btnRunEncounter} 
+					${$btnRunEncounter}
 					${$btnResetUse}
-					${$btnSaveToFile} 
-					<label class="flex-v-center ${timeInputs ? "mr-2" : "mr-3"}"> 
+					${$btnSaveToFile}
+					<label class="flex-v-center ${timeInputs ? "mr-2" : "mr-3"}">
 						<div class="mr-1 no-wrap">Has Time?</div>
-						${$cbHasTime} 
-					</label> 
+						${$cbHasTime}
+					</label>
 					${timeInputs ? $$`<div class="flex-v-center mr-3">
 						${timeInputs.$iptHours}
 						<div>:</div>
@@ -2390,7 +2429,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			${$hrMoons}
 			<div class="split flex-v-center mb-1 no-shrink">
 				<div class="underline dm-time__day-entry-header">Events</div>
-				<div class="btn-group flex">${$btnAddEvent}${$btnAddEventAtTime}</div>	
+				<div class="btn-group flex">${$btnAddEvent}${$btnAddEventAtTime}</div>
 			</div>
 			${$wrpEvents}
 			<hr class="hr-2 no-shrink">
@@ -2408,7 +2447,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 			hoursPerDay,
 			minutesPerHour,
 			secsPerMinute,
-			secsPerHour
+			secsPerHour,
 		} = getTimeInfo();
 		const padLengthHours = `${hoursPerDay}`.length;
 		const padLengthMinutes = `${minutesPerHour}`.length;
@@ -2427,8 +2466,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 							$ele: $(`<input class="form-control input-xs form-control--minimal text-center mr-1">`),
 							padLength: padLengthHours,
 							min: 0,
-							max: hoursPerDay - 1
-						}
+							max: hoursPerDay - 1,
+						},
 					);
 					const $iptExMinutes = ComponentUiUtil.$getIptInt(
 						this,
@@ -2438,8 +2477,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 							$ele: $(`<input class="form-control input-xs form-control--minimal text-center mr-1">`),
 							padLength: padLengthMinutes,
 							min: 0,
-							max: minutesPerHour - 1
-						}
+							max: minutesPerHour - 1,
+						},
 					);
 					const $iptExSecs = ComponentUiUtil.$getIptInt(
 						this,
@@ -2449,14 +2488,14 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 							$ele: $(`<input class="form-control input-xs form-control--minimal text-center">`),
 							padLength: padLengthSecs,
 							min: 0,
-							max: secsPerMinute - 1
-						}
+							max: secsPerMinute - 1,
+						},
 					);
 
 					const $wrpExact = $$`<div class="flex-vh-center">
-						${$iptExHour} 
+						${$iptExHour}
 						<div class="mr-1">:</div>
-						${$iptExMinutes} 
+						${$iptExMinutes}
 						<div class="mr-1">:</div>
 						${$iptExSecs}
 					</div>`;
@@ -2468,8 +2507,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						{
 							$ele: $(`<input class="form-control input-xs form-control--minimal text-center mr-1">`),
 							min: -TimeTrackerBase._MAX_TIME,
-							max: TimeTrackerBase._MAX_TIME
-						}
+							max: TimeTrackerBase._MAX_TIME,
+						},
 					);
 					const $iptOffsetMinutes = ComponentUiUtil.$getIptInt(
 						this,
@@ -2478,8 +2517,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						{
 							$ele: $(`<input class="form-control input-xs form-control--minimal text-center mr-1">`),
 							min: -TimeTrackerBase._MAX_TIME,
-							max: TimeTrackerBase._MAX_TIME
-						}
+							max: TimeTrackerBase._MAX_TIME,
+						},
 					);
 					const $iptOffsetSecs = ComponentUiUtil.$getIptInt(
 						this,
@@ -2488,8 +2527,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						{
 							$ele: $(`<input class="form-control input-xs form-control--minimal text-center mr-1">`),
 							min: -TimeTrackerBase._MAX_TIME,
-							max: TimeTrackerBase._MAX_TIME
-						}
+							max: TimeTrackerBase._MAX_TIME,
+						},
 					);
 
 					const $wrpOffset = $$`<div class="flex-vh-center">
@@ -2513,8 +2552,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 
 					$$`<div class="flex-col h-100">
 						<div class="flex-vh-center flex-col w-100 h-100">
-							${$selMode} 
-							${$wrpExact} 
+							${$selMode}
+							${$wrpExact}
 							${$wrpOffset}
 						</div>
 						${$btnOk}
@@ -2529,7 +2568,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 						exactSec: 0,
 						offsetHour: 0,
 						offsetMinute: 0,
-						offsetSec: 0
+						offsetSec: 0,
 					}
 				}
 			}
@@ -2547,7 +2586,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 					} else {
 						resolve({mode: "timeOffset", secsOffset: (obj.offsetHour * secsPerHour) + (obj.offsetMinute * secsPerMinute) + obj.offsetSec});
 					}
-				}
+				},
 			});
 
 			md.render($modalInner);
@@ -2607,7 +2646,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 
 		const {$modalInner, doClose} = UiUtil.getShowModal({
 			title: opts.title,
-			zIndex: TimeTrackerRoot_Calendar._Z_INDEX_MODAL
+			zIndex: TimeTrackerRoot_Calendar._Z_INDEX_MODAL,
 		});
 
 		// Create a copy of the current state, as a temp component
@@ -2634,8 +2673,8 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				{
 					isHideDay: true,
 					hasColumnLabels: this._parent.get("hasCalendarLabelsColumns"),
-					hasRowLabels: this._parent.get("hasCalendarLabelsRows")
-				}
+					hasRowLabels: this._parent.get("hasCalendarLabelsRows"),
+				},
 			);
 
 			$iptYear.val(timeInfo.year + 1);
@@ -2672,7 +2711,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				const ix = await InputUiUtil.pGetUserEnum({
 					default: 0,
 					title: "Choose a Tracker",
-					placeholder: "Select tracker"
+					placeholder: "Select tracker",
 				});
 				if (ix != null && ~ix) {
 					$tracker = $existingTrackers[ix]
@@ -2687,7 +2726,7 @@ class TimeTrackerRoot_Calendar extends TimeTrackerComponent {
 				try {
 					await $tracker.data("doConvertAndLoadBestiaryList")(toLoad.data);
 				} catch (e) {
-					JqueryUtil.doToast({type: "error", content: `Failed to add encounter! ${MiscUtil.STR_SEE_CONSOLE}`});
+					JqueryUtil.doToast({type: "error", content: `Failed to add encounter! ${VeCt.STR_SEE_CONSOLE}`});
 					throw e;
 				}
 				JqueryUtil.doToast({type: "success", content: "Encounter added to Initiative Tracker."});
@@ -2705,9 +2744,15 @@ TimeTrackerRoot_Calendar._tmpPrefCbCopy = false;
 
 class TimeTrackerRoot_Settings extends TimeTrackerComponent {
 	static getTimeNum (str, isAllowNegative) {
-		const num = Number(str.trim());
-		if (isNaN(num)) return TimeTrackerBase._MIN_TIME;
-		else return Math.max(Math.min(Math.round(num), TimeTrackerBase._MAX_TIME), isAllowNegative ? -TimeTrackerBase._MAX_TIME : TimeTrackerBase._MIN_TIME);
+		return UiUtil.strToInt(
+			str,
+			isAllowNegative ? 0 : TimeTrackerBase._MIN_TIME,
+			{
+				min: isAllowNegative ? -TimeTrackerBase._MAX_TIME : TimeTrackerBase._MIN_TIME,
+				max: TimeTrackerBase._MAX_TIME,
+				fallbackOnNaN: isAllowNegative ? 0 : TimeTrackerBase._MIN_TIME,
+			},
+		);
 	}
 
 	constructor (tracker, $wrpPanel) {
@@ -2772,8 +2817,8 @@ class TimeTrackerRoot_Settings extends TimeTrackerComponent {
 			TimeTrackerRoot.getGenericSeason,
 			{
 				fnSort: (a, b) => SortUtil.ascSort(a.startDay, b.startDay),
-				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No seasons)</div>`
-			}
+				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No seasons)</div>`,
+			},
 		);
 		const metaYears = this._render_getChildMeta(
 			"years",
@@ -2782,8 +2827,8 @@ class TimeTrackerRoot_Settings extends TimeTrackerComponent {
 			TimeTrackerRoot.getGenericYear,
 			{
 				fnSort: (a, b) => SortUtil.ascSort(a.year, b.year),
-				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No named years)</div>`
-			}
+				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No named years)</div>`,
+			},
 		);
 		const metaEras = this._render_getChildMeta(
 			"eras",
@@ -2792,8 +2837,8 @@ class TimeTrackerRoot_Settings extends TimeTrackerComponent {
 			TimeTrackerRoot.getGenericEra,
 			{
 				fnSort: (a, b) => SortUtil.ascSort(a.startYear, b.startYear),
-				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No eras)</div>`
-			}
+				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No eras)</div>`,
+			},
 		);
 		const metaMoons = this._render_getChildMeta(
 			"moons",
@@ -2802,8 +2847,8 @@ class TimeTrackerRoot_Settings extends TimeTrackerComponent {
 			TimeTrackerRoot.getGenericMoon,
 			{
 				fnSort: (a, b) => SortUtil.ascSort(a.phaseOffset, b.phaseOffset) || SortUtil.ascSort(a.name, b.name),
-				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No moons)</div>`
-			}
+				isEmptyMessage: `<div class="flex-vh-center my-1 italic w-100">(No moons)</div>`,
+			},
 		);
 
 		const $sectClock = $$`<div class="no-shrink w-100 mb-2">
@@ -2983,7 +3028,7 @@ class TimeTrackerRoot_Settings extends TimeTrackerComponent {
 				const comp = new Cls(this._board, this._$wrpPanel);
 				this._tmpComps[prop].push(comp);
 				comp.setStateFrom({state: nxt});
-				comp._addHookAll("state", () => this._parent.set(prop, (this._tmpComps[prop] || []).map(c => c.getState()).filter(it => !it.isDeleted).map(it => ({[it.id]: it})).reduce((a, b) => Object.assign(a, b), {})));
+				comp._addHookAll("state", () => this._parent.set(prop, (this._tmpComps[prop] || []).map(c => c.getState()).filter(it => !it.isDeleted).mergeMap(it => ({[it.id]: it}))));
 				comp.render($wrp, this._tmpComps, prop);
 			});
 
@@ -3026,7 +3071,7 @@ class TimeTrackerRoot_Settings_Day extends TimeTrackerComponent {
 			componentsParent,
 			componentsProp,
 			componentId: this._state.id,
-			marginSide: "r"
+			marginSide: "r",
 		});
 
 		const $btnRemove = $(`<button class="btn btn-xs btn-danger no-shrink" title="Delete Day"><span class="glyphicon glyphicon-trash"/></button>`)
@@ -3035,7 +3080,7 @@ class TimeTrackerRoot_Settings_Day extends TimeTrackerComponent {
 		this._$rendered = $$`<div class="flex my-1 dm-time__row-delete">
 			${$iptName}
 			${$padDrag}
-			${$btnRemove} 
+			${$btnRemove}
 			<div class="dm-time__spc-button"/>
 		</div>`.appendTo($parent);
 	}
@@ -3066,17 +3111,17 @@ class TimeTrackerRoot_Settings_Month extends TimeTrackerComponent {
 			componentsParent,
 			componentsProp,
 			componentId: this._state.id,
-			marginSide: "r"
+			marginSide: "r",
 		});
 
 		const $btnRemove = $(`<button class="btn btn-xs btn-danger no-shrink" title="Delete Month"><span class="glyphicon glyphicon-trash"/></button>`)
 			.click(() => this._state.isDeleted = true);
 
 		this._$rendered = $$`<div class="flex my-1 dm-time__row-delete">
-			${$iptName} 
-			${$iptDays} 
+			${$iptName}
+			${$iptDays}
 			${$padDrag}
-			${$btnRemove} 
+			${$btnRemove}
 			<div class="dm-time__spc-button"/>
 		</div>`.appendTo($parent);
 	}
@@ -3154,7 +3199,7 @@ class TimeTrackerRoot_Settings_Event extends TimeTrackerComponent {
 				eventCurTime,
 				(nxtTimeSecs) => {
 					this._state.timeOfDaySecs = nxtTimeSecs;
-				}
+				},
 			);
 		}
 
@@ -3165,10 +3210,10 @@ class TimeTrackerRoot_Settings_Event extends TimeTrackerComponent {
 					fnClick: (evt, eventYear, eventDay) => {
 						this._state.when = {
 							day: eventDay,
-							year: eventYear
+							year: eventYear,
 						};
 					},
-					prop: "events"
+					prop: "events",
 				});
 			});
 
@@ -3183,11 +3228,11 @@ class TimeTrackerRoot_Settings_Event extends TimeTrackerComponent {
 			<div class="flex w-100">
 				${$iptName}
 				${$btnShowHide}
-				${$btnEdit} 
-				<label class="flex-v-center ${timeInputs ? "mr-2" : "mr-3"}"> 
+				${$btnEdit}
+				<label class="flex-v-center ${timeInputs ? "mr-2" : "mr-3"}">
 					<div class="mr-1 no-wrap">Has Time?</div>
-					${$cbHasTime} 
-				</label> 
+					${$cbHasTime}
+				</label>
 				${timeInputs ? $$`<div class="flex-v-center mr-3">
 					${timeInputs.$iptHours}
 					<div>:</div>
@@ -3215,7 +3260,7 @@ class TimeTrackerRoot_Settings_Event extends TimeTrackerComponent {
 				if (!isDataEntered) return;
 				this._state.name = fauxComponent._state.name;
 				this._state.entries = MiscUtil.copy(fauxComponent._state.entries);
-			}
+			},
 		});
 
 		const $iptName = ComponentUiUtil.$getIptStr(fauxComponent, "name", {$ele: $(`<input class="form-control input-xs form-control--minimal mb-2 no-shrink">`)});
@@ -3225,8 +3270,8 @@ class TimeTrackerRoot_Settings_Event extends TimeTrackerComponent {
 			.click(() => doClose(true));
 
 		$$`<div class="flex-col h-100">
-			${$iptName} 
-			${$iptEntries} 
+			${$iptName}
+			${$iptEntries}
 			<div class="flex-h-right no-shrink">${$btnOk}</div>
 		</div>`.appendTo($modalInner);
 	}
@@ -3242,7 +3287,7 @@ class TimeTrackerRoot_Settings_Event extends TimeTrackerComponent {
 			const otherEvents = Object.values(parent.get("events"))
 				.filter(it => !(it.isDeleted || it.id === comp.getState().id));
 
-			parent.set("events", [...otherEvents, comp.getState()].map(it => ({[it.id]: it})).reduce((a, b) => Object.assign(a, b), {}));
+			parent.set("events", [...otherEvents, comp.getState()].mergeMap(it => ({[it.id]: it})));
 		});
 		return comp;
 	}
@@ -3266,12 +3311,12 @@ class TimeTrackerRoot_Settings_Season extends TimeTrackerComponent {
 			.click(() => this._state.isDeleted = true);
 
 		$$`<div class="flex my-1">
-			${$iptName} 
+			${$iptName}
 			${$iptSunrise}
 			${$iptSunset}
-			${$iptDaysStart} 
-			${$iptDaysEnd} 
-			${$btnRemove} 
+			${$iptDaysStart}
+			${$iptDaysEnd}
+			${$btnRemove}
 		</div>`.appendTo($parent);
 	}
 
@@ -3290,9 +3335,9 @@ class TimeTrackerRoot_Settings_Year extends TimeTrackerComponent {
 			.click(() => this._state.isDeleted = true);
 
 		$$`<div class="flex my-1">
-			${$iptName} 
+			${$iptName}
 			${$iptYear}
-			${$btnRemove} 
+			${$btnRemove}
 		</div>`.appendTo($parent);
 	}
 
@@ -3314,11 +3359,11 @@ class TimeTrackerRoot_Settings_Era extends TimeTrackerComponent {
 			.click(() => this._state.isDeleted = true);
 
 		$$`<div class="flex my-1">
-			${$iptName} 
-			${$iptAbbreviation} 
+			${$iptName}
+			${$iptAbbreviation}
 			${$iptYearsStart}
 			${$iptYearsEnd}
-			${$btnRemove} 
+			${$btnRemove}
 		</div>`.appendTo($parent);
 	}
 
@@ -3338,11 +3383,11 @@ class TimeTrackerRoot_Settings_Moon extends TimeTrackerComponent {
 			.click(() => this._state.isDeleted = true);
 
 		$$`<div class="flex my-1">
-			${$iptName} 
+			${$iptName}
 			${$iptColor}
-			${$iptPhaseOffset} 
+			${$iptPhaseOffset}
 			${$iptPeriod}
-			${$btnRemove} 
+			${$btnRemove}
 		</div>`.appendTo($parent);
 	}
 

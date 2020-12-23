@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"version": "1.1.2",
+	"version": "1.2.6",
 	"type": "object",
 	"properties": {
 		"variant": {
@@ -52,6 +52,9 @@
 								},
 								"scfType": {
 									"type": "string"
+								},
+								"net": {
+									"type": "boolean"
 								}
 							},
 							"additionalProperties": false
@@ -60,14 +63,42 @@
 					"inherits": {
 						"type": "object",
 						"properties": {
-							"genericBonus": {
+							"type": {
+								"description": "Generally this should be omitted, as the type of the base item will be used.",
+								"type": "string"
+							},
+							"bonusAc": {
+								"type": "string"
+							},
+							"bonusWeapon": {
+								"type": "string"
+							},
+							"bonusWeaponAttack": {
+								"type": "string"
+							},
+							"bonusSpellAttack": {
+								"type": "string"
+							},
+							"bonusSavingThrow": {
 								"type": "string"
 							},
 							"tier": {
 								"type": "string"
 							},
 							"rarity": {
-								"type": "string"
+								"type": "string",
+								"enum": [
+									"rare",
+									"none",
+									"uncommon",
+									"very rare",
+									"legendary",
+									"artifact",
+									"unknown",
+									"common",
+									"unknown (magic)",
+									"varies"
+								]
 							},
 							"source": {
 								"type": "string"
@@ -79,6 +110,9 @@
 								"type": "string"
 							},
 							"nameSuffix": {
+								"type": "string"
+							},
+							"nameRemove": {
 								"type": "string"
 							},
 							"reqAttune": {
@@ -139,6 +173,29 @@
 										}
 									]
 								}
+							},
+							"srd": {
+								"$ref": "util.json#/definitions/srd"
+							},
+							"otherSources": {
+								"$ref": "util.json#/definitions/otherSources"
+							},
+							"valueMult": {
+								"type": "number"
+							},
+							"valueExpression": {
+								"description": "Expression used to calculate each specific variant's value.",
+								"type": "string"
+							},
+							"weightMult": {
+								"type": "number"
+							},
+							"weightExpression": {
+								"description": "Expression used to calculate each specific variant's weight.",
+								"type": "string"
+							},
+							"barding": {
+								"type": "boolean"
 							}
 						},
 						"required": [
@@ -169,6 +226,9 @@
 							},
 							"property": {
 								"type": "string"
+							},
+							"net": {
+								"type": "boolean"
 							}
 						},
 						"additionalProperties": false
@@ -184,6 +244,9 @@
 						"items": {
 							"type": "string"
 						}
+					},
+					"ammo": {
+						"type": "boolean"
 					}
 				},
 				"required": [

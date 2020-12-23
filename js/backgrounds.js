@@ -2,60 +2,35 @@
 
 class BackgroundPage extends ListPage {
 	constructor () {
-		const sourceFilter = getSourceFilter();
-		const skillFilter = new Filter({header: "Skill Proficiencies", displayFn: StrUtil.toTitleCase});
-		const toolFilter = new Filter({header: "Tool Proficiencies", displayFn: StrUtil.toTitleCase});
-		const languageFilter = new Filter({header: "Language Proficiencies", displayFn: StrUtil.toTitleCase});
-
+		const pageFilter = new PageFilterBackgrounds();
 		super({
 			dataSource: "data/backgrounds.json",
 			dataSourceFluff: "data/fluff-backgrounds.json",
 
-			filters: [
-				sourceFilter,
-				skillFilter,
-				toolFilter,
-				languageFilter
-			],
-			filterSource: sourceFilter,
+			pageFilter,
 
 			listClass: "backgrounds",
 
 			sublistClass: "subbackgrounds",
 
-			dataProps: ["background"]
+			dataProps: ["background"],
 		});
-
-		this._sourceFilter = sourceFilter;
-		this._skillFilter = skillFilter;
-		this._toolFilter = toolFilter;
-		this._languageFilter = languageFilter;
 	}
 
-	getListItem (bg, bgI) {
-		const skillDisplay = Renderer.background.getSkillSummary(bg.skillProficiencies, true, bg._fSkills = []);
-		Renderer.background.getToolSummary(bg.toolProficiencies, true, bg._fTools = []);
-		Renderer.background.getLanguageSummary(bg.languageProficiencies, true, bg._fLangs = []);
-
-		// populate filters
-		this._sourceFilter.addItem(bg.source);
-		this._skillFilter.addItem(bg._fSkills);
-		this._toolFilter.addItem(bg._fTools);
-		this._languageFilter.addItem(bg._fLangs);
+	getListItem (bg, bgI, isExcluded) {
+		this._pageFilter.mutateAndAddToFilters(bg, isExcluded);
 
 		const eleLi = document.createElement("li");
-		eleLi.className = "row";
+		eleLi.className = `row ${isExcluded ? "row--blacklisted" : ""}`;
 
 		const name = bg.name.replace("Variant ", "");
 		const hash = UrlUtil.autoEncodeHash(bg);
 		const source = Parser.sourceJsonToAbv(bg.source);
 
-		eleLi.innerHTML = `<a href="#${hash}">
+		eleLi.innerHTML = `<a href="#${hash}" class="lst--border">
 			<span class="bold col-4 pl-0">${name}</span>
-			<span class="col-6">${skillDisplay}</span>
-			<span class="col-2 text-center ${Parser.sourceJsonToColor(bg.source)}" title="${Parser.sourceJsonToFull(bg.source)} pr-0" ${BrewUtil.sourceJsonToStyle(bg.source)}>${source}</span>
-			
-			<span class="uniqueid hidden">${bg.uniqueId ? bg.uniqueId : bgI}</span>
+			<span class="col-6">${bg._skillDisplay}</span>
+			<span class="col-2 text-center ${Parser.sourceJsonToColor(bg.source)} pr-0" title="${Parser.sourceJsonToFull(bg.source)}" ${BrewUtil.sourceJsonToStyle(bg.source)}>${source}</span>
 		</a>`;
 
 		const listItem = new ListItem(
@@ -65,9 +40,12 @@ class BackgroundPage extends ListPage {
 			{
 				hash,
 				source,
-				skills: skillDisplay,
-				uniqueid: bg.uniqueId || bgI
-			}
+				skills: bg._skillDisplay,
+			},
+			{
+				uniqueId: bg.uniqueId || bgI,
+				isExcluded,
+			},
 		);
 
 		eleLi.addEventListener("click", (evt) => this._list.doSelect(listItem, evt));
@@ -78,16 +56,7 @@ class BackgroundPage extends ListPage {
 
 	handleFilterChange () {
 		const f = this._filterBox.getValues();
-		this._list.filter(item => {
-			const bg = this._dataList[item.ix];
-			return this._filterBox.toDisplay(
-				f,
-				bg.source,
-				bg._fSkills,
-				bg._fTools,
-				bg._fLangs
-			);
-		});
+		this._list.filter(item => this._pageFilter.toDisplay(f, this._dataList[item.ix]));
 		FilterBox.selectFirstVisible(this._dataList);
 	}
 
@@ -97,7 +66,7 @@ class BackgroundPage extends ListPage {
 		const skills = Renderer.background.getSkillSummary(bg.skillProficiencies || [], true);
 
 		const $ele = $$`<li class="row">
-			<a href="#${hash}">
+			<a href="#${hash}" class="lst--border">
 				<span class="bold col-4 pl-0">${name}</span>
 				<span class="col-8 pr-0">${skills}</span>
 			</a>
@@ -111,8 +80,8 @@ class BackgroundPage extends ListPage {
 			{
 				hash,
 				source: Parser.sourceJsonToAbv(bg.source),
-				skills
-			}
+				skills,
+			},
 		);
 		return listItem;
 	}
@@ -127,40 +96,38 @@ class BackgroundPage extends ListPage {
 		};
 
 		const buildFluffTab = (isImageTab) => {
-			return Renderer.utils.pBuildFluffTab(
+			return Renderer.utils.pBuildFluffTab({
 				isImageTab,
-				$pgContent,
-				bg,
-				(fluffJson) => bg.fluff || fluffJson.background.find(it => it.name === bg.name && it.source === bg.source),
-				this._dataSourcefluff,
-				() => true
-			);
+				$content: $pgContent,
+				pFnGetFluff: Renderer.background.pGetFluff,
+				entity: bg,
+			});
 		};
 
 		const traitTab = Renderer.utils.tabButton(
 			"Traits",
 			() => {},
-			buildStatsTab
+			buildStatsTab,
 		);
 
 		const infoTab = Renderer.utils.tabButton(
 			"Info",
 			() => {},
-			buildFluffTab
+			buildFluffTab,
 		);
 		const picTab = Renderer.utils.tabButton(
 			"Images",
 			() => {},
-			buildFluffTab.bind(null, true)
+			buildFluffTab.bind(null, true),
 		);
 		Renderer.utils.bindTabButtons(traitTab, infoTab, picTab);
 
 		ListUtil.updateSelected();
 	}
 
-	doLoadSubHash (sub) {
+	async pDoLoadSubHash (sub) {
 		sub = this._filterBox.setFromSubHashes(sub);
-		ListUtil.setFromSubHashes(sub);
+		await ListUtil.pSetFromSubHashes(sub);
 	}
 }
 

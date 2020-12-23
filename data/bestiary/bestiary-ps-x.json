@@ -8,9 +8,9 @@
 	},
 	"monster": [
 		{
+			"name": "Chupacabra",
 			"source": "PSX",
 			"page": 9,
-			"name": "Chupacabra",
 			"size": "M",
 			"type": "monstrosity",
 			"alignment": [
@@ -42,6 +42,10 @@
 				"perception": "+3",
 				"stealth": "+4"
 			},
+			"senses": [
+				"darkvision 120 ft."
+			],
+			"passive": 13,
 			"resist": [
 				{
 					"resist": [
@@ -49,13 +53,10 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical weapons"
+					"note": "from nonmagical weapons",
+					"cond": true
 				}
 			],
-			"senses": [
-				"darkvision 120 ft."
-			],
-			"passive": 13,
 			"cr": "3",
 			"trait": [
 				{
@@ -87,6 +88,7 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Sunlight Sensitivity"
 			],
@@ -94,17 +96,20 @@
 				"SD"
 			],
 			"damageTags": [
-				"P",
-				"N"
+				"N",
+				"P"
 			],
 			"miscTags": [
 				"MW"
+			],
+			"conditionInflict": [
+				"prone"
 			]
 		},
 		{
+			"name": "Elder Dinosaur",
 			"source": "PSX",
 			"page": 33,
-			"name": "Elder Dinosaur",
 			"size": "G",
 			"type": {
 				"type": "monstrosity",
@@ -141,6 +146,10 @@
 				"wis": "+9",
 				"cha": "+9"
 			},
+			"senses": [
+				"blindsight 120 ft."
+			],
+			"passive": 10,
 			"immune": [
 				"fire",
 				"poison",
@@ -150,7 +159,8 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
 			],
 			"conditionImmune": [
@@ -159,10 +169,6 @@
 				"paralyzed",
 				"poisoned"
 			],
-			"senses": [
-				"blindsight 120 ft."
-			],
-			"passive": 10,
 			"cr": "30",
 			"trait": [
 				{
@@ -224,26 +230,32 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Legendary Resistances",
 				"Magic Resistance",
 				"Siege Monster"
 			],
+			"senseTags": [
+				"B"
+			],
 			"actionTags": [
 				"Frightful Presence",
 				"Swallow"
 			],
-			"senseTags": [
-				"B"
-			],
 			"damageTags": [
 				"A"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"restrained"
 			]
 		},
 		{
+			"name": "Elder Dinosaur (Etali, Primal Storm)",
 			"source": "PSX",
 			"page": 33,
-			"name": "Elder Dinosaur (Etali, Primal Storm)",
 			"size": "G",
 			"type": {
 				"type": "monstrosity",
@@ -280,6 +292,10 @@
 				"wis": "+9",
 				"cha": "+9"
 			},
+			"senses": [
+				"blindsight 120 ft."
+			],
+			"passive": 10,
 			"immune": [
 				"fire",
 				"poison",
@@ -289,7 +305,8 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
 			],
 			"conditionImmune": [
@@ -298,10 +315,6 @@
 				"paralyzed",
 				"poisoned"
 			],
-			"senses": [
-				"blindsight 120 ft."
-			],
-			"passive": 10,
 			"cr": "30",
 			"trait": [
 				{
@@ -381,35 +394,42 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Legendary Resistances",
 				"Magic Resistance",
 				"Siege Monster"
 			],
-			"actionTags": [
-				"Multiattack",
-				"Frightful Presence",
-				"Swallow"
-			],
 			"senseTags": [
 				"B"
 			],
+			"actionTags": [
+				"Frightful Presence",
+				"Multiattack",
+				"Swallow"
+			],
 			"damageTags": [
-				"P",
-				"S",
 				"A",
-				"L"
+				"L",
+				"P",
+				"S"
 			],
 			"miscTags": [
+				"AOE",
 				"MW",
-				"RCH",
-				"AOE"
+				"RCH"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"grappled",
+				"restrained"
 			]
 		},
 		{
+			"name": "Elder Dinosaur (Ghalta, Primal Hunger)",
 			"source": "PSX",
 			"page": 33,
-			"name": "Elder Dinosaur (Ghalta, Primal Hunger)",
 			"size": "G",
 			"type": {
 				"type": "monstrosity",
@@ -446,6 +466,10 @@
 				"wis": "+9",
 				"cha": "+9"
 			},
+			"senses": [
+				"blindsight 120 ft."
+			],
+			"passive": 10,
 			"immune": [
 				"fire",
 				"poison",
@@ -455,7 +479,8 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
 			],
 			"conditionImmune": [
@@ -464,10 +489,6 @@
 				"paralyzed",
 				"poisoned"
 			],
-			"senses": [
-				"blindsight 120 ft."
-			],
-			"passive": 10,
 			"cr": "30",
 			"trait": [
 				{
@@ -547,33 +568,41 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Legendary Resistances",
 				"Magic Resistance",
 				"Siege Monster"
 			],
-			"actionTags": [
-				"Multiattack",
-				"Frightful Presence",
-				"Swallow"
-			],
 			"senseTags": [
 				"B"
 			],
+			"actionTags": [
+				"Frightful Presence",
+				"Multiattack",
+				"Swallow"
+			],
 			"damageTags": [
-				"P",
+				"A",
 				"B",
-				"A"
+				"P"
 			],
 			"miscTags": [
 				"MW",
 				"RCH"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"grappled",
+				"prone",
+				"restrained"
 			]
 		},
 		{
+			"name": "Elder Dinosaur (Nezahal, Primal Tide)",
 			"source": "PSX",
 			"page": 33,
-			"name": "Elder Dinosaur (Nezahal, Primal Tide)",
 			"size": "G",
 			"type": {
 				"type": "monstrosity",
@@ -611,6 +640,10 @@
 				"wis": "+9",
 				"cha": "+9"
 			},
+			"senses": [
+				"blindsight 120 ft."
+			],
+			"passive": 10,
 			"immune": [
 				"fire",
 				"poison",
@@ -620,7 +653,8 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
 			],
 			"conditionImmune": [
@@ -629,10 +663,6 @@
 				"paralyzed",
 				"poisoned"
 			],
-			"senses": [
-				"blindsight 120 ft."
-			],
-			"passive": 10,
 			"cr": "30",
 			"trait": [
 				{
@@ -712,34 +742,41 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
+				"Hold Breath",
 				"Legendary Resistances",
 				"Magic Resistance",
-				"Siege Monster",
-				"Hold Breath"
-			],
-			"actionTags": [
-				"Multiattack",
-				"Frightful Presence",
-				"Swallow"
+				"Siege Monster"
 			],
 			"senseTags": [
 				"B"
 			],
+			"actionTags": [
+				"Frightful Presence",
+				"Multiattack",
+				"Swallow"
+			],
 			"damageTags": [
-				"P",
+				"A",
 				"B",
-				"A"
+				"P"
 			],
 			"miscTags": [
 				"MW",
 				"RCH"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"grappled",
+				"restrained"
 			]
 		},
 		{
+			"name": "Elder Dinosaur (Tetzimoc, Primal Death)",
 			"source": "PSX",
 			"page": 33,
-			"name": "Elder Dinosaur (Tetzimoc, Primal Death)",
 			"size": "G",
 			"type": {
 				"type": "monstrosity",
@@ -776,6 +813,10 @@
 				"wis": "+9",
 				"cha": "+9"
 			},
+			"senses": [
+				"blindsight 120 ft."
+			],
+			"passive": 10,
 			"immune": [
 				"fire",
 				"poison",
@@ -785,7 +826,8 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
 			],
 			"conditionImmune": [
@@ -794,10 +836,6 @@
 				"paralyzed",
 				"poisoned"
 			],
-			"senses": [
-				"blindsight 120 ft."
-			],
-			"passive": 10,
 			"cr": "30",
 			"trait": [
 				{
@@ -901,34 +939,42 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Legendary Resistances",
 				"Magic Resistance",
 				"Siege Monster"
 			],
-			"actionTags": [
-				"Multiattack",
-				"Frightful Presence",
-				"Swallow"
-			],
 			"senseTags": [
 				"B"
 			],
+			"actionTags": [
+				"Frightful Presence",
+				"Multiattack",
+				"Swallow"
+			],
 			"damageTags": [
+				"A",
 				"P",
-				"S",
-				"A"
+				"S"
 			],
 			"miscTags": [
 				"MW",
 				"RCH",
 				"RW"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"grappled",
+				"prone",
+				"restrained"
 			]
 		},
 		{
+			"name": "Elder Dinosaur (Zacama, Primal Calamity)",
 			"source": "PSX",
 			"page": 33,
-			"name": "Elder Dinosaur (Zacama, Primal Calamity)",
 			"size": "G",
 			"type": {
 				"type": "monstrosity",
@@ -965,6 +1011,10 @@
 				"wis": "+9",
 				"cha": "+9"
 			},
+			"senses": [
+				"blindsight 120 ft."
+			],
+			"passive": 10,
 			"immune": [
 				"fire",
 				"poison",
@@ -974,7 +1024,8 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
 			],
 			"conditionImmune": [
@@ -983,10 +1034,6 @@
 				"paralyzed",
 				"poisoned"
 			],
-			"senses": [
-				"blindsight 120 ft."
-			],
-			"passive": 10,
 			"cr": "30",
 			"trait": [
 				{
@@ -1066,33 +1113,41 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Legendary Resistances",
 				"Magic Resistance",
 				"Siege Monster"
 			],
-			"actionTags": [
-				"Multiattack",
-				"Frightful Presence",
-				"Swallow"
-			],
 			"senseTags": [
 				"B"
 			],
+			"actionTags": [
+				"Frightful Presence",
+				"Multiattack",
+				"Swallow"
+			],
 			"damageTags": [
-				"P",
+				"A",
 				"B",
-				"A"
+				"P"
 			],
 			"miscTags": [
 				"MW",
 				"RCH"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"grappled",
+				"prone",
+				"restrained"
 			]
 		},
 		{
+			"name": "Elder Dinosaur (Zetalpa, Primal Dawn)",
 			"source": "PSX",
 			"page": 33,
-			"name": "Elder Dinosaur (Zetalpa, Primal Dawn)",
 			"size": "G",
 			"type": {
 				"type": "monstrosity",
@@ -1130,6 +1185,13 @@
 				"wis": "+9",
 				"cha": "+9"
 			},
+			"senses": [
+				"blindsight 120 ft."
+			],
+			"passive": 10,
+			"resist": [
+				"radiant"
+			],
 			"immune": [
 				"fire",
 				"poison",
@@ -1139,11 +1201,9 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
-			],
-			"resist": [
-				"radiant"
 			],
 			"conditionImmune": [
 				"charmed",
@@ -1151,10 +1211,6 @@
 				"paralyzed",
 				"poisoned"
 			],
-			"senses": [
-				"blindsight 120 ft."
-			],
-			"passive": 10,
 			"cr": "30",
 			"trait": [
 				{
@@ -1240,34 +1296,41 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Legendary Resistances",
 				"Magic Resistance",
 				"Siege Monster"
 			],
-			"actionTags": [
-				"Multiattack",
-				"Frightful Presence",
-				"Swallow"
-			],
 			"senseTags": [
 				"B"
 			],
+			"actionTags": [
+				"Frightful Presence",
+				"Multiattack",
+				"Swallow"
+			],
 			"damageTags": [
-				"P",
-				"S",
+				"A",
 				"B",
-				"A"
+				"P",
+				"S"
 			],
 			"miscTags": [
 				"MW",
 				"RCH"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"grappled",
+				"restrained"
 			]
 		},
 		{
+			"name": "Frilled Deathspitter",
 			"source": "PSX",
 			"page": 30,
-			"name": "Frilled Deathspitter",
 			"size": "S",
 			"type": "beast",
 			"alignment": [
@@ -1325,23 +1388,28 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"actionTags": [
 				"Multiattack"
 			],
 			"damageTags": [
+				"I",
 				"P",
-				"S",
-				"I"
+				"S"
 			],
 			"miscTags": [
 				"MW",
 				"RW"
+			],
+			"conditionInflict": [
+				"blinded"
 			]
 		},
 		{
+			"name": "Gishath, Sun's Avatar",
+			"isNamedCreature": true,
 			"source": "PSX",
 			"page": 32,
-			"name": "Gishath, Sun's Avatar",
 			"size": "G",
 			"type": "beast",
 			"alignment": [
@@ -1434,7 +1502,7 @@
 					]
 				}
 			],
-			"isNamedCreature": true,
+			"hasToken": true,
 			"traitTags": [
 				"Legendary Resistances"
 			],
@@ -1443,19 +1511,62 @@
 				"Swallow"
 			],
 			"damageTags": [
-				"P",
 				"A",
-				"B"
+				"B",
+				"P"
 			],
 			"miscTags": [
 				"MW",
 				"RCH"
+			],
+			"conditionInflict": [
+				"blinded",
+				"frightened",
+				"grappled",
+				"prone",
+				"restrained"
 			]
 		},
 		{
+			"name": "Harpy",
+			"source": "PSX",
+			"page": 36,
+			"_copy": {
+				"name": "Harpy",
+				"source": "MM",
+				"_mod": {
+					"action": [
+						{
+							"mode": "replaceArr",
+							"replace": "Multiattack",
+							"items": {
+								"name": "Multiattack",
+								"entries": [
+									"The harpy makes two attacks: one with its claws and one with its bite."
+								]
+							}
+						},
+						{
+							"mode": "replaceArr",
+							"replace": "Club",
+							"items": {
+								"name": "Bite",
+								"entries": [
+									"{@atk mw} {@hit 3} to hit, reach 5 ft., one target. {@h}3 ({@damage 1d4 + 1}) slashing damage. If the target is a creature, it must succeed on a DC 11 Constitution saving throw or contract a disease. Until the disease is cured, the target can't regain hit points except by magical means, and the target's hit point maximum decreases by 3 ({@dice 1d6}) every 24 hours. If the target's hit point maximum drops to 0 as a result of this disease, the target dies."
+								]
+							}
+						}
+					]
+				}
+			},
+			"damageTags": [
+				"S"
+			]
+		},
+		{
+			"name": "Sunbird",
 			"source": "PSX",
 			"page": 32,
-			"name": "Sunbird",
 			"size": "G",
 			"type": "monstrosity",
 			"alignment": [
@@ -1492,6 +1603,10 @@
 			"skill": {
 				"perception": "+7"
 			},
+			"senses": [
+				"darkvision 120 ft."
+			],
+			"passive": 17,
 			"resist": [
 				{
 					"resist": [
@@ -1499,20 +1614,17 @@
 						"piercing",
 						"slashing"
 					],
-					"note": "from nonmagical attacks"
+					"note": "from nonmagical attacks",
+					"cond": true
 				}
 			],
 			"immune": [
 				"fire"
 			],
-			"senses": [
-				"darkvision 120 ft."
-			],
 			"languages": [
 				"Giant Owl",
 				"understands Common but can't speak it"
 			],
-			"passive": 17,
 			"cr": "13",
 			"trait": [
 				{
@@ -1554,64 +1666,36 @@
 					]
 				}
 			],
+			"hasToken": true,
 			"traitTags": [
 				"Death Burst",
 				"Flyby",
 				"Keen Senses"
 			],
+			"senseTags": [
+				"SD"
+			],
 			"actionTags": [
 				"Multiattack"
 			],
 			"languageTags": [
-				"GI",
-				"OTH",
 				"C",
-				"CS"
-			],
-			"senseTags": [
-				"SD"
+				"CS",
+				"GI",
+				"OTH"
 			],
 			"damageTags": [
-				"S",
-				"F"
+				"F",
+				"S"
 			],
 			"miscTags": [
-				"MW",
-				"AOE"
+				"AOE",
+				"MW"
+			],
+			"conditionInflict": [
+				"grappled",
+				"restrained"
 			]
-		},
-		{
-			"name": "Harpy",
-			"source": "PSX",
-			"page": 36,
-			"_copy": {
-				"name": "Harpy",
-				"source": "MM",
-				"_mod": {
-					"action": [
-						{
-							"mode": "replaceArr",
-							"replace": "Multiattack",
-							"items": {
-								"name": "Multiattack",
-								"entries": [
-									"The harpy makes two attacks: one with its claws and one with its bite."
-								]
-							}
-						},
-						{
-							"mode": "replaceArr",
-							"replace": "Club",
-							"items": {
-								"name": "Bite",
-								"entries": [
-									"{@atk mw} {@hit 3} to hit, reach 5 ft., one target. {@h}3 ({@damage 1d4 + 1}) slashing damage. If the target is a creature, it must succeed on a DC 11 Constitution saving throw or contract a disease. Until the disease is cured, the target can't regain hit points except by magical means, and the target's hit point maximum decreases by 3 ({@dice 1d6}) every 24 hours. If the target's hit point maximum drops to 0 as a result of this disease, the target dies."
-								]
-							}
-						}
-					]
-				}
-			}
 		}
 	]
 }

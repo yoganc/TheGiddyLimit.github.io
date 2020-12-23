@@ -1,52 +1,220 @@
 "use strict";
 
-class FilterUtil {
-	static compress (primitive) {
-		return UrlUtil.pack(FilterUtil._compress_getBase(primitive));
-	}
-
-	static _compress_getBase (primitive) {
-		const type = typeof primitive;
-		switch (type) {
-			case "boolean": return `b${Number(primitive)}`;
-			case "number": return `n${primitive}`;
-			case "string": return `s${UrlUtil.pack(primitive)}`;
-			default: throw new Error(`Unhandled type "${type}"`);
-		}
-	}
-
-	static decompress (raw) {
-		const [type, data] = [raw.slice(0, 1), raw.slice(1)];
-		switch (type) {
-			case "b": return !!Number(data);
-			case "n": return Number(data);
-			case "s": return String(data);
-			default: throw new Error(`Unhandled type "${type}"`);
-		}
-	}
-}
+class FilterUtil {}
 FilterUtil.SUB_HASH_PREFIX_LENGTH = 4;
 
-class FilterBox extends ProxyBase {
-	static async pGetStoredActiveSources () {
-		const stored = await StorageUtil.pGetForPage(FilterBox._STORAGE_KEY);
-		if (stored) {
-			const sourceFilterData = stored.filters[FilterBox.SOURCE_HEADER];
-			if (sourceFilterData) {
-				const state = sourceFilterData.state;
-				const blue = [];
-				const white = [];
-				Object.entries(state).forEach(([src, mode]) => {
-					if (mode === 1) blue.push(src);
-					else if (mode !== -1) white.push(src);
-				});
-				if (blue.length) return blue; // if some are selected, we load those
-				else return white; // otherwise, we load non-red
-			}
-		}
-		return null;
+class PageFilter {
+	static defaultSourceSelFn (val) {
+		return !SourceUtil.isNonstandardSource(val);
 	}
 
+	constructor (opts) {
+		opts = opts || {};
+		this._sourceFilter = new SourceFilter(opts.sourceFilterOpts);
+		this._filterBox = null;
+	}
+
+	get filterBox () { return this._filterBox; }
+	get sourceFilter () { return this._sourceFilter; }
+
+	mutateAndAddToFilters (entity, isExcluded, opts) {
+		this.mutateForFilters(entity, opts);
+		this.addToFilters(entity, isExcluded, opts);
+	}
+
+	mutateForFilters (entity, opts) { throw new Error("Unimplemented!"); }
+	addToFilters (entity, isExcluded, opts) { throw new Error("Unimplemented!"); }
+	toDisplay (values, entity) { throw new Error("Unimplemented!"); }
+	async _pPopulateBoxOptions () { throw new Error("Unimplemented!"); }
+
+	async pInitFilterBox (opts) {
+		opts = opts || {};
+		await this._pPopulateBoxOptions(opts);
+		this._filterBox = new FilterBox(opts);
+		await this._filterBox.pDoLoadState();
+		return this._filterBox;
+	}
+}
+
+class ModalFilter {
+	static _$getFilterColumnHeaders (btnMeta) {
+		return btnMeta.map((it, i) => $(`<button class="col-${it.width} ${i === 0 ? "pl-0" : i === btnMeta.length ? "pr-0" : ""} ${it.disabled ? "" : "sort"} btn btn-default btn-xs" ${it.disabled ? "" : `data-sort="${it.sort}"`} ${it.title ? `title="${it.title}"` : ""} ${it.disabled ? "disabled" : ""}>${it.text}${it.disabled ? "" : ` <span class="caret_wrp"></span>`}</button>`));
+	}
+
+	/**
+	 * @param opts Options object.
+	 * @param opts.modalTitle
+	 * @param opts.fnSort
+	 * @param opts.pageFilter
+	 * @param [opts.namespace]
+	 * @param [opts.allData]
+	 */
+	constructor (opts) {
+		this._modalTitle = opts.modalTitle;
+		this._fnSort = opts.fnSort;
+		this._pageFilter = opts.pageFilter;
+		this._namespace = opts.namespace;
+		this._allData = opts.allData || null;
+		this._isRadio = !!opts.isRadio;
+
+		this._list = null;
+		this._filterCache = null;
+	}
+
+	_$getWrpList () { return $(`<div class="list ui-list__wrp overflow-x-hidden overflow-y-auto mb-2 h-100 min-h-0"></div>`); }
+
+	/**
+	 * @param $wrp
+	 * @param opts
+	 * @param opts.$iptSearch
+	 * @param opts.$btnReset
+	 * @param opts.$btnOpen
+	 * @param opts.$btnToggleSummaryHidden
+	 * @param opts.$wrpMiniPills
+	 * @param opts.isBuildUi If an alternate UI should be used, which has "send to right" buttons.
+	 */
+	async pPopulateWrapper ($wrp, opts) {
+		opts = opts || {};
+
+		await this._pInit();
+
+		const $ovlLoading = $(`<div class="w-100 h-100 flex-vh-center"><i class="dnd-font ve-muted">Loading...</i></div>`).appendTo($wrp);
+
+		const $iptSearch = opts.$iptSearch || $(`<input class="form-control" type="search" placeholder="Search...">`);
+		const $btnReset = opts.$btnReset || $(`<button class="btn btn-default">Reset</button>`);
+		const $wrpFormTop = $$`<div class="flex input-group btn-group w-100 lst__form-top">${$iptSearch}${$btnReset}</div>`;
+
+		const $wrpFormBottom = opts.$wrpMiniPills || $(`<div class="w-100"></div>`);
+
+		const $wrpFormHeaders = $(`<div class="input-group input-group--bottom flex no-shrink"></div>`);
+		const $cbSelAll = opts.isBuildUi || this._isRadio ? null : $(`<input type="checkbox">`);
+		const $btnSendAllToRight = opts.isBuildUi ? $(`<button class="btn btn-xxs btn-default col-1" title="Add All"><span class="glyphicon glyphicon-arrow-right"></span></button>`) : null;
+
+		if (!opts.isBuildUi) {
+			if (this._isRadio) $wrpFormHeaders.append(`<label class="btn btn-default col-1 flex-vh-center" disabled></label>`);
+			else $$`<label class="btn btn-default col-1 flex-vh-center">${$cbSelAll}</label>`.appendTo($wrpFormHeaders);
+		}
+		this._$getColumnHeaders().forEach($ele => $wrpFormHeaders.append($ele));
+		if (opts.isBuildUi) $btnSendAllToRight.appendTo($wrpFormHeaders);
+
+		const $wrpForm = $$`<div class="flex-col w-100 mb-1">${$wrpFormTop}${$wrpFormBottom}${$wrpFormHeaders}</div>`;
+		const $wrpList = this._$getWrpList();
+
+		const $btnConfirm = opts.isBuildUi ? null : $(`<button class="btn btn-default">Confirm</button>`);
+
+		this._list = new List({
+			$iptSearch,
+			$wrpList,
+			fnSort: this._fnSort,
+		});
+
+		if (!opts.isBuildUi && !this._isRadio) ListUiUtil.bindSelectAllCheckbox($cbSelAll, this._list);
+		SortUtil.initBtnSortHandlers($wrpFormHeaders, this._list);
+
+		this._allData = this._allData || await this._pLoadAllData();
+
+		await this._pageFilter.pInitFilterBox({
+			$wrpFormTop,
+			$btnReset,
+			$wrpMiniPills: $wrpFormBottom,
+			namespace: this._namespace,
+			$btnOpen: opts.$btnOpen,
+			$btnToggleSummaryHidden: opts.$btnToggleSummaryHidden,
+		});
+
+		this._allData.forEach((it, i) => {
+			this._pageFilter.mutateAndAddToFilters(it);
+			const filterListItem = this._getListItem(this._pageFilter, it, i);
+			this._list.addItem(filterListItem);
+			if (!opts.isBuildUi) {
+				if (this._isRadio) filterListItem.ele.addEventListener("click", evt => ListUiUtil.handleSelectClickRadio(this._list, filterListItem, evt));
+				else filterListItem.ele.addEventListener("click", evt => ListUiUtil.handleSelectClick(this._list, filterListItem, evt));
+			}
+		});
+
+		this._list.init();
+		this._list.update();
+
+		const handleFilterChange = () => {
+			const f = this._pageFilter.filterBox.getValues();
+			this._list.filter(li => {
+				const it = this._allData[li.ix];
+				return this._pageFilter.toDisplay(f, it);
+			});
+		};
+
+		this._pageFilter.filterBox.on(FilterBox.EVNT_VALCHANGE, handleFilterChange);
+		this._pageFilter.filterBox.render();
+		handleFilterChange();
+
+		$ovlLoading.remove();
+
+		const $wrpInner = $$`<div class="flex-col h-100">
+			${$wrpForm}
+			${$wrpList}
+			${opts.isBuildUi ? null : $$`<div class="flex-vh-center">${$btnConfirm}</div>`}
+		</div>`.appendTo($wrp.empty());
+
+		return {
+			$wrpInner,
+			$btnConfirm,
+			pageFilter: this._pageFilter,
+			list: this._list,
+			$cbSelAll,
+			$btnSendAllToRight,
+		}
+	}
+
+	async pGetUserSelection () {
+		// eslint-disable-next-line no-async-promise-executor
+		return new Promise(async resolve => {
+			let $wrpModalInner;
+
+			const {$modalInner, doClose} = UiUtil.getShowModal({
+				isHeight100: true,
+				title: `Filter/Search for ${this._modalTitle}`,
+				cbClose: (isDataEntered) => {
+					$wrpModalInner.detach();
+					if (!isDataEntered) resolve([]);
+				},
+				isUncappedHeight: true,
+			});
+
+			if (this._filterCache) {
+				$wrpModalInner = this._filterCache.$wrpModalInner.appendTo($modalInner);
+			} else {
+				const meta = await this.pPopulateWrapper($modalInner);
+				const {$btnConfirm, pageFilter, list, $cbSelAll} = meta;
+				$wrpModalInner = meta.$wrpInner;
+
+				this._filterCache = {$wrpModalInner, $btnConfirm, pageFilter, list, $cbSelAll};
+			}
+
+			this._filterCache.$btnConfirm.off("click").click(async () => {
+				const checked = this._filterCache.list.visibleItems.filter(it => it.data.cbSel.checked);
+				resolve(checked);
+
+				doClose(true);
+
+				// region reset selection state
+				if (this._filterCache.$cbSelAll) this._filterCache.$cbSelAll.prop("checked", false);
+				this._filterCache.list.items.forEach(it => {
+					if (it.data.cbSel) it.data.cbSel.checked = false;
+					it.ele.classList.remove("list-multi-selected");
+				});
+				// endregion
+			});
+		});
+	}
+
+	/** Widths should total to 11/12ths, as 1/12th is set aside for the checkbox column. */
+	_$getColumnHeaders () { throw new Error(`Unimplemented!`); }
+	async _pInit () { /* Implement as required */ }
+	async _pLoadAllData () { throw new Error(`Unimplemented!`); }
+	async _getListItem () { throw new Error(`Unimplemented!`); }
+}
+
+class FilterBox extends ProxyBase {
 	static selectFirstVisible (entryList) {
 		if (Hist.lastLoadedId == null && !Hist.initialLoad) {
 			Hist._freshLoad();
@@ -68,28 +236,89 @@ class FilterBox extends ProxyBase {
 
 	/**
 	 * @param opts Options object.
-	 * @param opts.$wrpFormTop Form input group.
+	 * @param [opts.$wrpFormTop] Form input group.
 	 * @param opts.$btnReset Form reset button.
+	 * @param [opts.$btnOpen] A custom button to use to open the filter overlay.
+	 * @param [opts.$iptSearch] Search input associated with the "form" this filter is a part of. Only used for passing
+	 * through search terms in @filter tags.
+	 * @param [opts.$wrpMiniPills] Element to house mini pills.
+	 * @param [opts.$btnToggleSummaryHidden] Button which toggles the filter summary.
 	 * @param opts.filters Array of filters to be included in this box.
 	 * @param [opts.isCompact] True if this box should have a compact/reduced UI.
+	 * @param [opts.namespace] Namespace for this filter, to prevent collisions with other filters on the same page.
 	 */
 	constructor (opts) {
 		super();
 
+		this._$iptSearch = opts.$iptSearch;
 		this._$wrpFormTop = opts.$wrpFormTop;
 		this._$btnReset = opts.$btnReset;
+		this._$btnOpen = opts.$btnOpen;
+		this._$wrpMiniPills = opts.$wrpMiniPills;
+		this._$btnToggleSummaryHidden = opts.$btnToggleSummaryHidden;
 		this._filters = opts.filters;
 		this._isCompact = opts.isCompact;
+		this._namespace = opts.namespace;
 
 		this._doSaveStateDebounced = MiscUtil.debounce(() => this._pDoSaveState(), 50);
-		this.__meta = {...FilterBox._DEFAULT_META};
+		this.__meta = this._getDefaultMeta();
+		if (this._isCompact) this.__meta.isSummaryHidden = true;
+
 		this._meta = this._getProxy("meta", this.__meta);
 		this.__minisHidden = {};
 		this._minisHidden = this._getProxy("minisHidden", this.__minisHidden);
 		this.__combineAs = {};
 		this._combineAs = this._getProxy("combineAs", this.__combineAs);
-		this._$body = $(`body`);
-		this._$overlay = null;
+		this._modalMeta = null;
+
+		this._cachedState = null;
+
+		this._compSearch = BaseComponent.fromObject({search: ""});
+
+		this._filters.forEach(f => f.filterBox = this);
+
+		this._eventListeners = {};
+	}
+
+	get filters () { return this._filters; }
+
+	teardown () {
+		this._filters.forEach(f => f._doTeardown());
+		if (this._modalMeta) this._modalMeta.doTeardown();
+	}
+
+	// region Event listeners
+	on (identifier, fn) {
+		(this._eventListeners[identifier] = this._eventListeners[identifier] || []).push(fn);
+		return this;
+	}
+
+	off (identifier) {
+		delete this._eventListeners[identifier];
+		return this;
+	}
+	// endregion
+
+	_getNamespacedStorageKey () { return `${FilterBox._STORAGE_KEY}${this._namespace ? `.${this._namespace}` : ""}` }
+	getNamespacedHashKey (k) { return `${k || "_".repeat(FilterUtil.SUB_HASH_PREFIX_LENGTH)}${this._namespace ? `.${this._namespace}` : ""}`; }
+
+	async pGetStoredActiveSources () {
+		const stored = await StorageUtil.pGetForPage(this._getNamespacedStorageKey());
+		if (stored) {
+			const sourceFilterData = stored.filters[FilterBox.SOURCE_HEADER];
+			if (sourceFilterData) {
+				const state = sourceFilterData.state;
+				const blue = [];
+				const white = [];
+				Object.entries(state).forEach(([src, mode]) => {
+					if (mode === 1) blue.push(src);
+					else if (mode !== -1) white.push(src);
+				});
+				if (blue.length) return blue; // if some are selected, we load those
+				else return white; // otherwise, we load non-red
+			}
+		}
+		return null;
 	}
 
 	registerMinisHiddenHook (prop, hook) {
@@ -101,146 +330,200 @@ class FilterBox extends ProxyBase {
 	}
 
 	async pDoLoadState () {
-		const toLoad = await StorageUtil.pGetForPage(FilterBox._STORAGE_KEY);
-		if (toLoad != null) {
-			this._setStateFromLoaded(toLoad.box);
-			this._filters.forEach(it => it.setStateFromLoaded(toLoad.filters));
-		}
+		const toLoad = await StorageUtil.pGetForPage(this._getNamespacedStorageKey());
+		if (toLoad != null) this._setStateFromLoaded(toLoad);
 	}
 
 	_setStateFromLoaded (state) {
-		this._proxyAssign("meta", "_meta", "__meta", state.meta);
-		this._proxyAssign("minisHidden", "_minisHidden", "__minisHidden", state.minisHidden);
-		this._proxyAssign("combineAs", "_combineAs", "__combineAs", state.combineAs);
+		state.box = state.box || {};
+		this._proxyAssign("meta", "_meta", "__meta", state.box.meta || {}, true);
+		this._proxyAssign("minisHidden", "_minisHidden", "__minisHidden", state.box.minisHidden || {}, true);
+		this._proxyAssign("combineAs", "_combineAs", "__combineAs", state.box.combineAs || {}, true);
+		this._filters.forEach(it => it.setStateFromLoaded(state.filters));
 	}
 
-	async _pDoSaveState () {
+	_getSaveableState () {
 		const filterOut = {};
 		this._filters.forEach(it => Object.assign(filterOut, it.getSaveableState()));
-		const toSave = {
+		return {
 			box: {
 				meta: {...this.__meta},
 				minisHidden: {...this.__minisHidden},
-				combineAs: {...this.__combineAs}
+				combineAs: {...this.__combineAs},
 			},
-			filters: filterOut
+			filters: filterOut,
 		};
-		await StorageUtil.pSetForPage(FilterBox._STORAGE_KEY, toSave);
+	}
+
+	async _pDoSaveState () {
+		await StorageUtil.pSetForPage(this._getNamespacedStorageKey(), this._getSaveableState());
 	}
 
 	render () {
-		if (this._$overlay) {
+		if (this._modalMeta) {
 			// already rendered previously; simply update the filters
 			this._filters.map(f => f.update());
+			return;
+		}
+
+		this._modalMeta = UiUtil.getShowModal({
+			isHeight100: true,
+			isWidth100: true,
+			isUncappedHeight: true,
+			isIndestructible: true,
+			isClosed: true,
+			isEmpty: true,
+			cbClose: (isDataEntered) => this._pHandleHide(!isDataEntered),
+		});
+
+		if (!this._$wrpMiniPills) {
+			this._$wrpMiniPills = $(`<div class="fltr__mini-view btn-group"></div>`).insertAfter(this._$wrpFormTop);
 		} else {
-			this._$overlay = this._render_$getOverlay();
-			const $wrpMini = $(`<div class="fltr__mini-view btn-group"/>`)
-				.insertAfter(this._$wrpFormTop);
+			this._$wrpMiniPills.addClass("fltr__mini-view");
+		}
 
-			const $children = this._filters.map((f, i) => f.$render({filterBox: this, isFirst: i === 0, $wrpMini}));
+		const $children = this._filters.map((f, i) => f.$render({filterBox: this, isFirst: i === 0, $wrpMini: this._$wrpMiniPills}));
 
-			const $btnShowAllFilters = $(`<button class="btn btn-xs btn-default">Show All</button>`)
-				.click(() => this.showAllFilters());
-			const $btnHideAllFilters = $(`<button class="btn btn-xs btn-default">Hide All</button>`)
-				.click(() => this.hideAllFilters());
+		const metaIptSearch = ComponentUiUtil.$getIptStr(
+			this._compSearch, "search",
+			{decorationRight: "clear", asMeta: true, html: `<input class="form-control input-xs" placeholder="Search...">`},
+		);
+		this._compSearch._addHookBase("search", () => {
+			const searchTerm = this._compSearch._state.search.toLowerCase();
+			this._filters.forEach(f => f.handleSearch(searchTerm));
+		});
 
-			const $btnReset = $(`<button class="btn btn-xs btn-default mr-3" title="Reset filters. SHIFT to reset everything.">Reset</button>`)
-				.click(evt => this.reset(evt.shiftKey));
+		const $btnShowAllFilters = $(`<button class="btn btn-xs btn-default">Show All</button>`)
+			.click(() => this.showAllFilters());
+		const $btnHideAllFilters = $(`<button class="btn btn-xs btn-default">Hide All</button>`)
+			.click(() => this.hideAllFilters());
 
-			const $btnSettings = $(`<button class="btn btn-xs btn-default"><span class="glyphicon glyphicon-cog"/></button>`)
-				.click(() => this._openSettingsModal());
+		const $btnReset = $(`<button class="btn btn-xs btn-default mr-3" title="Reset filters. SHIFT to reset everything.">Reset</button>`)
+			.click(evt => this.reset(evt.shiftKey));
 
-			const $wrpBtnCombineFilters = $(`<div class="btn-group mr-3"></div>`);
-			const $btnCombineFilterSettings = $(`<button class="btn btn-xs btn-default"><span class="glyphicon glyphicon-cog"/></button>`)
-				.click(() => this._openCombineAsModal());
+		const $btnSettings = $(`<button class="btn btn-xs btn-default mr-3"><span class="glyphicon glyphicon-cog"></span></button>`)
+			.click(() => this._openSettingsModal());
 
-			const $btnCombineFiltersAs = $(`<button class="btn btn-xs btn-default"/>`)
-				.appendTo($wrpBtnCombineFilters)
-				.click(() => this._meta.modeCombineFilters = FilterBox._COMBINE_MODES.getNext(this._meta.modeCombineFilters));
-			const hook = () => {
-				$btnCombineFiltersAs.text(this._meta.modeCombineFilters === "custom" ? this._meta.modeCombineFilters.uppercaseFirst() : this._meta.modeCombineFilters.toUpperCase());
-				if (this._meta.modeCombineFilters === "custom") $wrpBtnCombineFilters.append($btnCombineFilterSettings);
-				else $btnCombineFilterSettings.detach();
-				this._doSaveStateDebounced();
-			};
-			this._addHook("meta", "modeCombineFilters", hook);
-			hook();
+		const $btnSaveAlt = $(`<button class="btn btn-xs btn-primary" title="Save"><span class="glyphicon glyphicon-ok"></span></button>`)
+			.click(() => this._modalMeta.doClose(true));
 
-			$$`<div class="ui-modal__inner ui-modal__inner--large dropdown-menu">
-			<div class="split mb-2 mt-2 flex-v-center">
-				<h4 class="m-0">Filters</h4>
-				<div class="flex-v-center">
-					<div class="mr-2">Combine filters as...</div>
+		const $wrpBtnCombineFilters = $(`<div class="btn-group mr-3"></div>`);
+		const $btnCombineFilterSettings = $(`<button class="btn btn-xs btn-default"><span class="glyphicon glyphicon-cog"></span></button>`)
+			.click(() => this._openCombineAsModal());
+
+		const $btnCombineFiltersAs = $(`<button class="btn btn-xs btn-default"></button>`)
+			.appendTo($wrpBtnCombineFilters)
+			.click(() => this._meta.modeCombineFilters = FilterBox._COMBINE_MODES.getNext(this._meta.modeCombineFilters));
+		const hook = () => {
+			$btnCombineFiltersAs.text(this._meta.modeCombineFilters === "custom" ? this._meta.modeCombineFilters.uppercaseFirst() : this._meta.modeCombineFilters.toUpperCase());
+			if (this._meta.modeCombineFilters === "custom") $wrpBtnCombineFilters.append($btnCombineFilterSettings);
+			else $btnCombineFilterSettings.detach();
+			this._doSaveStateDebounced();
+		};
+		this._addHook("meta", "modeCombineFilters", hook);
+		hook();
+
+		const $btnSave = $(`<button class="btn btn-primary fltr__btn-close mr-2">Save</button>`)
+			.click(() => this._modalMeta.doClose(true));
+
+		const $btnCancel = $(`<button class="btn btn-default fltr__btn-close">Cancel</button>`)
+			.click(() => this._modalMeta.doClose(false));
+
+		$$(this._modalMeta.$modal)`<div class="split mb-2 mt-2 flex-v-center mobile__flex-col">
+			<div class="flex-v-baseline mobile__flex-col">
+				<h4 class="m-0 mr-2 mobile__mb-2">Filters</h4>
+				${metaIptSearch.$wrp.addClass("mobile__mb-2")}
+			</div>
+			<div class="flex-v-center mobile__flex-col">
+				<div class="flex-v-center mobile__m-1">
+					<div class="mr-2">Combine as</div>
 					${$wrpBtnCombineFilters}
+				</div>
+				<div class="flex-v-center mobile__m-1">
 					<div class="btn-group mr-2">
 						${$btnShowAllFilters}
 						${$btnHideAllFilters}
 					</div>
 					${$btnReset}
 					${$btnSettings}
+					${$btnSaveAlt}
 				</div>
 			</div>
-			<hr class="w-100 m-0 mb-2">
-			
-			<hr class="mt-1 mb-1">
-			<div class="ui-modal__scroller smooth-scroll px-1">
-				${$children}
-			</div>
-			</div>`
-				.click((evt) => evt.stopPropagation())
-				.appendTo(this._$overlay);
+		</div>
+		<hr class="w-100 m-0 mb-2">
 
+		<hr class="mt-1 mb-1">
+		<div class="ui-modal__scroller smooth-scroll px-1">
+			${$children}
+		</div>
+		<hr class="my-1 w-100">
+		<div class="w-100 flex-vh-center my-1">${$btnSave}${$btnCancel}</div>`;
+
+		if (this._$btnReset) {
 			this._$btnReset
-				.attr("title", "Reset filters. SHIFT to reset everything.")
+				.title("Reset filters. SHIFT to reset everything.")
 				.click((evt) => this.reset(evt.shiftKey));
-
-			if (!this._isCompact) {
-				const $btnToggleSummaryHidden = $(`<button class="btn btn-default" title="Toggle Filter Summary Display"><span class="glyphicon glyphicon-resize-small"/></button>`)
-					.click(() => {
-						this._meta.isSummaryHidden = !this._meta.isSummaryHidden;
-						this._doSaveStateDebounced();
-					})
-					.prependTo(this._$wrpFormTop);
-				const summaryHiddenHook = () => {
-					$btnToggleSummaryHidden.toggleClass("active", !!this._meta.isSummaryHidden);
-					$wrpMini.toggleClass("hidden", !!this._meta.isSummaryHidden);
-				};
-				this._addHook("meta", "isSummaryHidden", summaryHiddenHook);
-				summaryHiddenHook();
-			}
-
-			$(`<button class="btn btn-default ${this._isCompact ? "px-2" : ""}">Filter</button>`)
-				.click(() => this.show())
-				.prependTo(this._$wrpFormTop);
-
-			const sourceFilter = this._filters.find(it => it.header === FilterBox.SOURCE_HEADER);
-			if (sourceFilter) {
-				const selFnAlt = (val) => !SourceUtil.isNonstandardSource(val) && !BrewUtil.hasSourceJson(val);
-				const hkSelFn = () => {
-					if (this._meta.isBrewDefaultHidden) sourceFilter.setTempFnSel(selFnAlt);
-					else sourceFilter.setTempFnSel(null);
-					sourceFilter.updateMiniPillClasses();
-				};
-				this._addHook("meta", "isBrewDefaultHidden", hkSelFn);
-				hkSelFn();
-			}
 		}
-	}
 
-	_render_$getOverlay () {
-		const $overlay = $(`<div class="modal__wrp modal__wrp--no-centre"/>`).hide().appendTo(this._$body);
+		if (!this._$btnToggleSummaryHidden) {
+			this._$btnToggleSummaryHidden = $(`<button class="btn btn-default ${this._isCompact ? "p-2" : ""}" title="Toggle Filter Summary Display"><span class="glyphicon glyphicon-resize-small"></span></button>`)
+				.prependTo(this._$wrpFormTop);
+		} else if (!this._$btnToggleSummaryHidden.parent().length) {
+			this._$btnToggleSummaryHidden.prependTo(this._$wrpFormTop);
+		}
+		this._$btnToggleSummaryHidden
+			.click(() => {
+				this._meta.isSummaryHidden = !this._meta.isSummaryHidden;
+				this._doSaveStateDebounced();
+			});
+		const summaryHiddenHook = () => {
+			this._$btnToggleSummaryHidden.toggleClass("active", !!this._meta.isSummaryHidden);
+			this._$wrpMiniPills.toggleClass("ve-hidden", !!this._meta.isSummaryHidden);
+		};
+		this._addHook("meta", "isSummaryHidden", summaryHiddenHook);
+		summaryHiddenHook();
 
-		$overlay.click(() => this.hide());
+		if (!this._$btnOpen) {
+			this._$btnOpen = $(`<button class="btn btn-default ${this._isCompact ? "px-2" : ""}">Filter</button>`)
+				.prependTo(this._$wrpFormTop);
+		} else if (!this._$btnOpen.parent().length) {
+			this._$btnOpen.prependTo(this._$wrpFormTop);
+		}
+		this._$btnOpen.click(() => this.show());
 
-		return $overlay;
+		const sourceFilter = this._filters.find(it => it.header === FilterBox.SOURCE_HEADER);
+		if (sourceFilter) {
+			const selFnAlt = (val) => !SourceUtil.isNonstandardSource(val) && !BrewUtil.hasSourceJson(val);
+			const hkSelFn = () => {
+				if (this._meta.isBrewDefaultHidden) sourceFilter.setTempFnSel(selFnAlt);
+				else sourceFilter.setTempFnSel(null);
+				sourceFilter.updateMiniPillClasses();
+			};
+			this._addHook("meta", "isBrewDefaultHidden", hkSelFn);
+			hkSelFn();
+		}
 	}
 
 	_openSettingsModal () {
 		const {$modalInner} = UiUtil.getShowModal({title: "Settings"});
+
 		UiUtil.$getAddModalRowCb($modalInner, "Deselect Homebrew Sources by Default", this._meta, "isBrewDefaultHidden");
+
 		UiUtil.addModalSep($modalInner);
+
 		UiUtil.$getAddModalRowHeader($modalInner, "Hide summary for filter...", {helpText: "The summary is the small red and blue button panel which appear below the search bar."});
 		this._filters.forEach(f => UiUtil.$getAddModalRowCb($modalInner, f.header, this._minisHidden, f.header));
+
+		UiUtil.addModalSep($modalInner);
+
+		const $rowResetAlwaysSave = UiUtil.$getAddModalRow($modalInner, "div").addClass("pr-2");
+		$rowResetAlwaysSave.append(`<span>Always Save on Close</span>`);
+		$(`<button class="btn btn-xs btn-default">Reset</button>`)
+			.appendTo($rowResetAlwaysSave)
+			.click(async () => {
+				await StorageUtil.pRemove(FilterBox._STORAGE_KEY_ALWAYS_SAVE_UNCHANGED);
+				JqueryUtil.doToast("Saved!");
+			});
 	}
 
 	_openCombineAsModal () {
@@ -261,11 +544,11 @@ class FilterBox extends ProxyBase {
 	}
 
 	addEventListener (type, listener) {
-		this._$wrpFormTop[0].addEventListener(type, listener);
+		(this._$wrpFormTop ? this._$wrpFormTop[0] : this._$btnOpen[0]).addEventListener(type, listener);
 	}
 
 	_reset_meta () {
-		Object.assign(this._meta, FilterBox._DEFAULT_META);
+		Object.assign(this._meta, this._getDefaultMeta());
 	}
 
 	_reset_minisHidden () {
@@ -288,14 +571,35 @@ class FilterBox extends ProxyBase {
 	}
 
 	show () {
-		this._$body.css("overflow", "hidden");
-		this._$overlay.show();
+		this._cachedState = this._getSaveableState();
+		this._modalMeta.doOpen();
 	}
 
-	hide () {
-		this._$body.css("overflow", "");
-		this._$overlay.hide();
-		this.fireChangeEvent();
+	async _pHandleHide (isCancel = false) {
+		if (this._cachedState && isCancel) {
+			const curState = this._getSaveableState();
+			const hasChanges = !CollectionUtil.deepEquals(curState, this._cachedState);
+
+			if (hasChanges) {
+				const isSave = await InputUiUtil.pGetUserBoolean({
+					title: "Unsaved Changes",
+					textYesRemember: "Always Save",
+					textYes: "Save",
+					textNo: "Discard",
+					storageKey: FilterBox._STORAGE_KEY_ALWAYS_SAVE_UNCHANGED,
+					isGlobal: true,
+				});
+				if (isSave) {
+					this._cachedState = null;
+					this.fireChangeEvent();
+					return;
+				} else this._setStateFromLoaded(this._cachedState);
+			}
+		} else {
+			this.fireChangeEvent();
+		}
+
+		this._cachedState = null;
 	}
 
 	showAllFilters () {
@@ -306,7 +610,7 @@ class FilterBox extends ProxyBase {
 		this._filters.forEach(f => f.hide());
 	}
 
-	setFromSubHashes (subHashes) {
+	setFromSubHashes (subHashes, force = false) {
 		const unpacked = {};
 		subHashes.forEach(s => {
 			const unpackedPart = UrlUtil.unpackSubHash(s, true);
@@ -323,25 +627,31 @@ class FilterBox extends ProxyBase {
 		});
 		const updatedUrlHeaders = new Set();
 		const consumed = new Set();
+		let filterInitialSearch;
 
 		const filterBoxState = {};
 		const statePerFilter = {};
+		const prefixLen = this.getNamespacedHashKey().length;
 		Object.entries(unpacked)
 			.forEach(([hashKey, data]) => {
-				const prefix = hashKey.substring(0, FilterUtil.SUB_HASH_PREFIX_LENGTH);
-				const urlHeader = hashKey.substring(FilterUtil.SUB_HASH_PREFIX_LENGTH);
+				const rawPrefix = hashKey.substring(0, prefixLen);
+				const prefix = rawPrefix.substring(0, FilterUtil.SUB_HASH_PREFIX_LENGTH);
+
+				const urlHeader = hashKey.substring(prefixLen);
 
 				if (FilterUtil.SUB_HASH_PREFIXES.has(prefix) && urlHeaderToFilter[urlHeader]) {
 					(statePerFilter[urlHeader] = statePerFilter[urlHeader] || {})[prefix] = data.clean;
 					updatedUrlHeaders.add(urlHeader);
 					consumed.add(data.raw);
 				} else if (Object.values(FilterBox._SUB_HASH_PREFIXES).includes(prefix)) {
-					filterBoxState[prefix] = data.clean;
+					// special case for the search """state"""
+					if (prefix === VeCt.FILTER_BOX_SUB_HASH_SEARCH_PREFIX) filterInitialSearch = data.clean[0];
+					else filterBoxState[prefix] = data.clean;
 					consumed.add(data.raw);
 				} else if (FilterUtil.SUB_HASH_PREFIXES.has(prefix)) throw new Error(`Could not find filter with header ${urlHeader} for subhash ${data.raw}`)
 			});
 
-		if (consumed.size) {
+		if (consumed.size || force) {
 			this._setFromSubHashState(urlHeaderToFilter, filterBoxState);
 
 			Object.entries(statePerFilter).forEach(([urlHeader, state]) => {
@@ -357,7 +667,7 @@ class FilterBox extends ProxyBase {
 					filter.resetShallow(true);
 				});
 
-			const [link] = Hist._getHashParts();
+			const [link] = Hist.getHashParts();
 
 			const outSub = [];
 			Object.values(unpacked)
@@ -365,12 +675,9 @@ class FilterBox extends ProxyBase {
 				.forEach(v => outSub.push(v.raw));
 
 			Hist.setSuppressHistory(true);
-			window.history.replaceState(
-				{},
-				document.title,
-				`${location.origin}${location.pathname}${`#${link}${outSub.length ? `${HASH_PART_SEP}${outSub.join(HASH_PART_SEP)}` : ""}`}`
-			);
+			Hist.replaceHistoryHash(`${link}${outSub.length ? `${HASH_PART_SEP}${outSub.join(HASH_PART_SEP)}` : ""}`);
 
+			if (filterInitialSearch && this._$iptSearch) this._$iptSearch.val(filterInitialSearch).change().keydown().keyup();
 			this.fireChangeEvent();
 			Hist.hashChange();
 			return outSub;
@@ -383,12 +690,12 @@ class FilterBox extends ProxyBase {
 		let hasCombineAs = false;
 
 		Object.entries(filterBoxState).forEach(([k, vals]) => {
-			const mappedK = Parser._parse_bToA(FilterBox._SUB_HASH_PREFIXES, k);
+			const mappedK = this.getNamespacedHashKey(Parser._parse_bToA(FilterBox._SUB_HASH_PREFIXES, k));
 			switch (mappedK) {
 				case "meta": {
 					hasMeta = true;
-					const data = vals.map(v => FilterUtil.decompress(v));
-					Object.keys(FilterBox._DEFAULT_META).forEach((k, i) => this._meta[k] = data[i]);
+					const data = vals.map(v => UrlUtil.mini.decompress(v));
+					Object.keys(this._getDefaultMeta()).forEach((k, i) => this._meta[k] = data[i]);
 					break;
 				}
 				case "minisHidden": {
@@ -421,34 +728,45 @@ class FilterBox extends ProxyBase {
 		if (!hasCombineAs) this._reset_combineAs();
 	}
 
-	getSubHashes () {
+	/**
+	 * @param [opts] Options object.
+	 * @param [opts.isAddSearchTerm] If the active search should be added to the subhashes.
+	 */
+	getSubHashes (opts) {
+		opts = opts || {};
 		const out = [];
-		const boxSubHashes = this._getSubHashes();
+		const boxSubHashes = this.getBoxSubHashes();
 		if (boxSubHashes) out.push(boxSubHashes);
 		out.push(...this._filters.map(f => f.getSubHashes()).filter(Boolean));
+		if (opts.isAddSearchTerm && this._$iptSearch) {
+			const searchTerm = UrlUtil.encodeForHash(this._$iptSearch.val().trim());
+			if (searchTerm) out.push(UrlUtil.packSubHash(this._getSubhashPrefix("search"), [searchTerm]));
+		}
 		return out.flat();
 	}
 
-	_getSubHashes () {
+	getBoxSubHashes () {
 		const out = [];
 
+		const defaultMeta = this._getDefaultMeta();
+
 		// serialize base meta in a set order
-		const anyNotDefault = Object.keys(FilterBox._DEFAULT_META).find(k => this._meta[k] !== FilterBox._DEFAULT_META[k]);
+		const anyNotDefault = Object.keys(defaultMeta).find(k => this._meta[k] !== defaultMeta[k]);
 		if (anyNotDefault) {
-			const serMeta = Object.keys(FilterBox._DEFAULT_META).map(k => FilterUtil.compress(this._meta[k]));
-			return [UrlUtil.packSubHash(FilterBox._getSubhashPrefix("meta"), serMeta)]
+			const serMeta = Object.keys(defaultMeta).map(k => UrlUtil.mini.compress(this._meta[k] === undefined ? defaultMeta[k] : this._meta[k]));
+			out.push(UrlUtil.packSubHash(this._getSubhashPrefix("meta"), serMeta));
 		}
 
 		// serialize minisHidden as `key=value` pairs
-		const setMinisHidden = Object.entries(this._minisHidden).filter(([k, v]) => !!v).map(([k]) => `${UrlUtil.pack(k)}=1`);
+		const setMinisHidden = Object.entries(this._minisHidden).filter(([k, v]) => !!v).map(([k]) => `${k.toUrlified()}=1`);
 		if (setMinisHidden.length) {
-			out.push(UrlUtil.packSubHash(FilterBox._getSubhashPrefix("minisHidden"), setMinisHidden));
+			out.push(UrlUtil.packSubHash(this._getSubhashPrefix("minisHidden"), setMinisHidden));
 		}
 
 		// serialize combineAs as `key=value` pairs
-		const setCombineAs = Object.entries(this._combineAs).filter(([k, v]) => v !== FilterBox._COMBINE_MODES[0]).map(([k]) => `${UrlUtil.pack(k)}=${FilterBox._COMBINE_MODES.indexOf(v)}`);
+		const setCombineAs = Object.entries(this._combineAs).filter(([k, v]) => v !== FilterBox._COMBINE_MODES[0]).map(([k, v]) => `${k.toUrlified()}=${FilterBox._COMBINE_MODES.indexOf(v)}`);
 		if (setCombineAs.length) {
-			out.push(UrlUtil.packSubHash(FilterBox._getSubhashPrefix("combineAs"), setCombineAs));
+			out.push(UrlUtil.packSubHash(this._getSubhashPrefix("combineAs"), setCombineAs));
 		}
 
 		return out.length ? out : null;
@@ -468,7 +786,7 @@ class FilterBox extends ProxyBase {
 		const isOrDisplay = (filters, vals = entryVals) => {
 			const res = filters.map((f, i) => {
 				// filter out "ignored" filter (i.e. all white)
-				if (!boxState[f.header] || !boxState[f.header]._isActive) return null;
+				if (!f.isActive(boxState)) return null;
 				return f.toDisplay(boxState, vals[i]);
 			}).filter(it => it != null);
 			return res.length === 0 || res.find(it => it);
@@ -503,13 +821,18 @@ class FilterBox extends ProxyBase {
 
 	fireChangeEvent () {
 		this._doSaveStateDebounced();
-		const eventOut = new Event(FilterBox.EVNT_VALCHANGE);
-		this._$wrpFormTop[0].dispatchEvent(eventOut);
+		(this._eventListeners[FilterBox.EVNT_VALCHANGE] || []).forEach(fn => fn());
 	}
 
-	static _getSubhashPrefix (prop) {
-		if (FilterBox._SUB_HASH_PREFIXES[prop]) return FilterBox._SUB_HASH_PREFIXES[prop];
+	_getSubhashPrefix (prop) {
+		if (FilterBox._SUB_HASH_PREFIXES[prop]) return this.getNamespacedHashKey(FilterBox._SUB_HASH_PREFIXES[prop]);
 		throw new Error(`Unknown property "${prop}"`);
+	}
+
+	_getDefaultMeta () {
+		const out = MiscUtil.copy(FilterBox._DEFAULT_META);
+		if (this._isCompact) out.isSummaryHidden = true;
+		return out;
 	}
 }
 FilterBox.EVNT_VALCHANGE = "valchange";
@@ -520,8 +843,9 @@ FilterBox._STORAGE_KEY = "filterBoxState";
 FilterBox._DEFAULT_META = {
 	modeCombineFilters: "and",
 	isSummaryHidden: false,
-	isBrewDefaultHidden: false
+	isBrewDefaultHidden: false,
 };
+FilterBox._STORAGE_KEY_ALWAYS_SAVE_UNCHANGED = "filterAlwaysSaveUnchanged";
 
 // These are assumed to be the same length (4 characters)
 FilterBox._SUB_HASH_BOX_META_PREFIX = "fbmt";
@@ -530,15 +854,16 @@ FilterBox._SUB_HASH_BOX_COMBINE_AS_PREFIX = "fbca";
 FilterBox._SUB_HASH_PREFIXES = {
 	meta: FilterBox._SUB_HASH_BOX_META_PREFIX,
 	minisHidden: FilterBox._SUB_HASH_BOX_MINIS_HIDDEN_PREFIX,
-	combineAs: FilterBox._SUB_HASH_BOX_COMBINE_AS_PREFIX
+	combineAs: FilterBox._SUB_HASH_BOX_COMBINE_AS_PREFIX,
+	search: VeCt.FILTER_BOX_SUB_HASH_SEARCH_PREFIX,
 };
 
 class FilterItem {
 	/**
 	 * An alternative to string `Filter.items` with a change-handling function
 	 * @param options containing:
-	 * @param [options.item] the item string
-	 * @param [options.changeFn] (optional) function to call when filter is changed
+	 * @param options.item the item string
+	 * @param [options.pFnChange] (optional) function to call when filter is changed
 	 * @param [options.group] (optional) group this item belongs to.
 	 * @param [options.nest] (optional) nest this item belongs to
 	 * @param [options.nestHidden] (optional) if nested, default visibility state
@@ -547,7 +872,7 @@ class FilterItem {
 	 */
 	constructor (options) {
 		this.item = options.item;
-		this.changeFn = options.changeFn;
+		this.pFnChange = options.pFnChange;
 		this.group = options.group;
 		this.nest = options.nest;
 		this.nestHidden = options.nestHidden;
@@ -555,18 +880,32 @@ class FilterItem {
 		this.userData = options.userData;
 
 		this.$rendered = null;
+		this.searchText = null;
 	}
 }
 
 class FilterBase extends BaseComponent {
+	/**
+	 * @param opts
+	 * @param opts.header Filter header (name)
+	 * @param [opts.headerHelp] Filter header help text (tooltip)
+	 */
 	constructor (opts) {
 		super();
+		this._filterBox = null;
 
 		this.header = opts.header;
+		this._headerHelp = opts.headerHelp;
 
 		this.__meta = {...this.getDefaultMeta()};
 		this._meta = this._getProxy("meta", this.__meta);
 	}
+
+	_getRenderedHeader () {
+		return `<span ${this._headerHelp ? `title="${this._headerHelp.escapeQuotes()}" class="help--subtle"` : ""}>${this.header}</span>`;
+	}
+
+	set filterBox (it) { this._filterBox = it; }
 
 	show () { this._meta.isHidden = false; }
 
@@ -579,10 +918,11 @@ class FilterBase extends BaseComponent {
 	}
 
 	getMetaSubHashes () {
-		const anyNotDefault = Object.keys(FilterBase._DEFAULT_META).find(k => this._meta[k] !== FilterBase._DEFAULT_META[k]);
+		const defaultMeta = this.getDefaultMeta();
+		const anyNotDefault = Object.keys(defaultMeta).find(k => this._meta[k] !== defaultMeta[k]);
 		if (anyNotDefault) {
-			const serMeta = Object.keys(FilterBase._DEFAULT_META).map(k => FilterUtil.compress(this._meta[k]));
-			return [UrlUtil.packSubHash(FilterBase.getSubHashPrefix("meta", this.header), serMeta)]
+			const serMeta = Object.keys(defaultMeta).map(k => UrlUtil.mini.compress(this._meta[k] === undefined ? defaultMeta[k] : this._meta[k]));
+			return [UrlUtil.packSubHash(this.getSubHashPrefix("meta", this.header), serMeta)]
 		} else return null;
 	}
 
@@ -597,7 +937,7 @@ class FilterBase extends BaseComponent {
 			const prop = FilterBase.getProp(k);
 			if (prop === "meta") {
 				hasMeta = true;
-				const data = vals.map(v => FilterUtil.decompress(v));
+				const data = vals.map(v => UrlUtil.mini.decompress(v));
 				Object.keys(defaultMeta).forEach((k, i) => {
 					if (data[i] !== undefined) this._meta[k] = data[i];
 					else this._meta[k] = defaultMeta[k];
@@ -609,10 +949,10 @@ class FilterBase extends BaseComponent {
 
 	setBaseStateFromLoaded (toLoad) { Object.assign(this._meta, toLoad.meta); }
 
-	static getSubHashPrefix (prop, header) {
+	getSubHashPrefix (prop, header) {
 		if (FilterBase._SUB_HASH_PREFIXES[prop]) {
-			const prefix = FilterBase._SUB_HASH_PREFIXES[prop];
-			return `${prefix}${UrlUtil.pack(header)}`;
+			const prefix = this._filterBox.getNamespacedHashKey(FilterBase._SUB_HASH_PREFIXES[prop]);
+			return `${prefix}${header.toUrlified()}`;
 		}
 		throw new Error(`Unknown property "${prop}"`);
 	}
@@ -621,8 +961,29 @@ class FilterBase extends BaseComponent {
 		return Parser._parse_bToA(FilterBase._SUB_HASH_PREFIXES, prefix);
 	}
 
+	_$getBtnMobToggleControls ($wrpControls) {
+		const $btnMobToggleControls = $(`<button class="btn btn-xs btn-default mobile__visible ml-2 px-3"><span class="glyphicon glyphicon-option-vertical"></span></button>`)
+			.click(() => this._meta.isMobileHeaderHidden = !this._meta.isMobileHeaderHidden);
+		const hkMobHeaderHidden = () => {
+			$btnMobToggleControls.toggleClass("active", !this._meta.isMobileHeaderHidden);
+			$wrpControls.toggleClass("mobile__hidden", !!this._meta.isMobileHeaderHidden);
+		};
+		this._addHook("meta", "isMobileHeaderHidden", hkMobHeaderHidden);
+		hkMobHeaderHidden();
+
+		return $btnMobToggleControls;
+	}
+
 	getChildFilters () { return []; }
 	getDefaultMeta () { return {...FilterBase._DEFAULT_META}; }
+
+	/**
+	 * @param vals Previously-read filter value may be passed in for performance.
+	 */
+	isActive (vals) {
+		vals = vals || this.getValues();
+		return vals[this.header]._isActive;
+	}
 
 	$render () { throw new Error(`Unimplemented!`); }
 	getValues () { throw new Error(`Unimplemented!`); }
@@ -637,18 +998,23 @@ class FilterBase extends BaseComponent {
 	getSubHashes () { throw new Error(`Unimplemented!`); }
 	setFromSubHashState () { throw new Error(`Unimplemented!`); }
 	setFromValues () { throw new Error(`Unimplemented!`); }
+	handleSearch () { throw new Error(`Unimplemented`); }
+	_doTeardown () { /* No-op */ }
 }
 FilterBase._DEFAULT_META = {
-	isHidden: false
+	isHidden: false,
+	isMobileHeaderHidden: true,
 };
 // These are assumed to be the same length (4 characters)
 FilterBase._SUB_HASH_STATE_PREFIX = "flst";
 FilterBase._SUB_HASH_META_PREFIX = "flmt";
 FilterBase._SUB_HASH_NESTS_HIDDEN_PREFIX = "flnh";
+FilterBase._SUB_HASH_OPTIONS_PREFIX = "flop";
 FilterBase._SUB_HASH_PREFIXES = {
 	state: FilterBase._SUB_HASH_STATE_PREFIX,
 	meta: FilterBase._SUB_HASH_META_PREFIX,
-	nestsHidden: FilterBase._SUB_HASH_NESTS_HIDDEN_PREFIX
+	nestsHidden: FilterBase._SUB_HASH_NESTS_HIDDEN_PREFIX,
+	options: FilterBase._SUB_HASH_OPTIONS_PREFIX,
 };
 
 class Filter extends FilterBase {
@@ -658,39 +1024,60 @@ class Filter extends FilterBase {
 
 	static _validateItemNests (items, nests) {
 		if (!nests) return;
+		items = items.filter(it => it.nest);
 		const noNest = items.find(it => !nests[it.nest]);
-		if (noNest) throw new Error(`Did not have a nest: "${noNest.item}"`);
+		if (noNest) throw new Error(`Filter does not have matching nest: "${noNest.item}" (call addNest first)`);
 		const invalid = items.find(it => !it.nest || !nests[it.nest]);
 		if (invalid) throw new Error(`Invalid nest: "${invalid.item}"`);
 	}
 
+	/** A single-item version of the above, for performance. */
+	static _validateItemNest (item, nests) {
+		if (!nests || !item.nest) return;
+		if (!nests[item.nest]) throw new Error(`Filter does not have matching nest: "${item.item}" (call addNest first)`);
+		if (!item.nest || !nests[item.nest]) throw new Error(`Invalid nest: "${item.item}"`);
+	}
+
 	/**
 	 * @param opts Options object.
+	 * @param opts.header Filter header (name)
+	 * @param [opts.headerHelp] Filter header help text (tooltip)
 	 * @param opts.items Array of filter items, either `FilterItem` or strings. e.g. `["DMG", "VGM"]`
 	 * @param [opts.nests] Key-value object of `"Nest Name": {...nestMeta}`. Nests are used to group/nest filters.
 	 * @param [opts.displayFn] Function which translates an item to a displayable form, e.g. `"MM` -> "Monster Manual"`
+	 * @param [opts.displayFnMini] Function which translates an item to a shortened displayable form, e.g. `"UABravoCharlie` -> "UABC"`
+	 * @param [opts.displayFnTitle] Function which translates an item to a form for displaying in a "title" tooltip
 	 * @param [opts.selFn] Function which returns true if an item should be displayed by default; false otherwise.
 	 * @param [opts.deselFn] Function which returns true if an item should be hidden by default; false otherwise.
 	 * @param [opts.itemSortFn] Function which should be used to sort the `items` array if new entries are added.
 	 *        Defaults to ascending alphabetical sort.
+	 * @param [opts.itemSortFnMini] Function which should be used to sort the `items` array when rendering mini-pills.
 	 * @param [opts.groupFn] Function which takes an item and assigns it to a group.
 	 * @param [opts.minimalUi] True if the filter should render with a reduced UI, false otherwise.
 	 * @param [opts.umbrellaItems] Items which should, when set active, show everything in the filter. E.g. "All".
 	 * @param [opts.umbrellaExcludes] Items which should ignore the state of any `umbrellaItems`
+	 * @param [opts.isSortByDisplayItems] If items should be sorted by their display value, rather than their internal value.
+	 * @param [opts.isSrdFilter] If this filter's items include the "SRD" tag.
 	 */
 	constructor (opts) {
 		super(opts);
 		this._items = Filter._getAsFilterItems(opts.items || []);
+		this.__itemsSet = new Set(this._items.map(it => it.item)); // Cache the items as a set for fast exists checking
 		this._nests = opts.nests;
 		this._displayFn = opts.displayFn;
+		this._displayFnMini = opts.displayFnMini;
+		this._displayFnTitle = opts.displayFnTitle;
 		this._selFn = opts.selFn;
 		this._selFnCache = null;
 		this._deselFn = opts.deselFn;
 		this._itemSortFn = opts.itemSortFn === undefined ? SortUtil.ascSort : opts.itemSortFn;
+		this._itemSortFnMini = opts.itemSortFnMini;
 		this._groupFn = opts.groupFn;
 		this._minimalUi = opts.minimalUi;
 		this._umbrellaItems = Filter._getAsFilterItems(opts.umbrellaItems);
 		this._umbrellaExcludes = Filter._getAsFilterItems(opts.umbrellaExcludes);
+		this._isSortByDisplayItems = !!opts.isSortByDisplayItems;
+		this._isSrdFilter = !!opts.isSrdFilter;
 
 		Filter._validateItemNests(this._items, this._nests);
 
@@ -708,13 +1095,15 @@ class Filter extends FilterBase {
 		this._pillGroupsMeta = {};
 	}
 
+	get isSrdFilter () { return this._isSrdFilter; }
+
 	getSaveableState () {
 		return {
 			[this.header]: {
 				...this.getBaseSaveableState(),
 				state: {...this.__state},
-				nestsHidden: {...this.__nestsHidden}
-			}
+				nestsHidden: {...this.__nestsHidden},
+			},
 		};
 	}
 
@@ -734,27 +1123,57 @@ class Filter extends FilterBase {
 		if (baseMeta) out.push(...baseMeta);
 
 		const areNotDefaultState = Object.entries(this._state).filter(([k, v]) => {
+			if (k.startsWith("_")) return false;
 			const defState = this._getDefaultState(k);
 			return defState !== v;
 		});
 		if (areNotDefaultState.length) {
 			// serialize state as `key=value` pairs
-			const serPillStates = areNotDefaultState.map(([k, v]) => `${UrlUtil.pack(k)}=${v}`);
-			out.push(UrlUtil.packSubHash(FilterBase.getSubHashPrefix("state", this.header), serPillStates));
+			const serPillStates = areNotDefaultState.map(([k, v]) => `${k.toUrlified()}=${v}`);
+			out.push(UrlUtil.packSubHash(this.getSubHashPrefix("state", this.header), serPillStates));
 		}
 
 		const areNotDefaultNestsHidden = Object.entries(this._nestsHidden).filter(([k, v]) => this._nests[k] && !(this._nests[k].isHidden === v));
 		if (areNotDefaultNestsHidden.length) {
 			// serialize nestsHidden as `key=value` pairs
-			const nestsHidden = areNotDefaultNestsHidden.map(([k]) => `${UrlUtil.pack(k)}=1`);
-			out.push(UrlUtil.packSubHash(FilterBase.getSubHashPrefix("nestsHidden", this.header), nestsHidden));
+			const nestsHidden = areNotDefaultNestsHidden.map(([k]) => `${k.toUrlified()}=1`);
+			out.push(UrlUtil.packSubHash(this.getSubHashPrefix("nestsHidden", this.header), nestsHidden));
 		}
 
-		return out.length ? out : null;
+		if (!out.length) return null;
+
+		// Always extend default state
+		out.push(UrlUtil.packSubHash(this.getSubHashPrefix("options", this.header), ["extend"]))
+		return out;
+	}
+
+	/**
+	 * Get transient options used when setting state from URL.
+	 * @private
+	 */
+	_getOptionsFromSubHashState (state) {
+		// `flopsource:thing1~thing2` => `{options: ["thing1", "thing2"]}`
+		const opts = {};
+		Object.entries(state).forEach(([k, vals]) => {
+			const prop = FilterBase.getProp(k);
+			switch (prop) {
+				case "options": {
+					vals.forEach(val => {
+						switch (val) {
+							case "extend": {
+								opts.isExtendDefaultState = true;
+							}
+						}
+					});
+				}
+			}
+		});
+		return new FilterTransientOptions(opts);
 	}
 
 	setFromSubHashState (state) {
 		this.setMetaFromSubHashState(state);
+		const transientOptions = this._getOptionsFromSubHashState(state);
 
 		let hasState = false;
 		let hasNestsHidden = false;
@@ -765,7 +1184,14 @@ class Filter extends FilterBase {
 				case "state": {
 					hasState = true;
 					const nxtState = {};
-					Object.keys(this._state).forEach(k => nxtState[k] = this._getDefaultState(k));
+
+					if (transientOptions.isExtendDefaultState) {
+						Object.keys(this._state).forEach(k => nxtState[k] = this._getDefaultState(k));
+					} else {
+						// This allows e.g. @filter tags to cleanly specify their sources
+						Object.keys(this._state).forEach(k => nxtState[k] = 0);
+					}
+
 					vals.forEach(v => {
 						const [statePropLower, state] = v.split("=");
 						const stateProp = Object.keys(this._state).find(k => k.toLowerCase() === statePropLower);
@@ -786,7 +1212,7 @@ class Filter extends FilterBase {
 						const nestName = Object.keys(this._nestsHidden).find(k => k.toLowerCase() === nestNameLower);
 						if (nestName) nxtNestsHidden[nestName] = !!Number(state);
 					});
-					this._proxyAssign("nestsHidden", "_nestsHidden", "__nestsHidden", nxtNestsHidden);
+					this._proxyAssign("nestsHidden", "_nestsHidden", "__nestsHidden", nxtNestsHidden, true);
 					break;
 				}
 			}
@@ -803,6 +1229,8 @@ class Filter extends FilterBase {
 		}
 	}
 
+	setValue (k, v) { this._state[k] = v; }
+
 	_resetNestsHidden () {
 		if (this._nests) Object.entries(this._nests).forEach(([nestName, nestMeta]) => this._nestsHidden[nestName] = !!nestMeta.isHidden);
 	}
@@ -815,8 +1243,16 @@ class Filter extends FilterBase {
 	_getDefaultState (k) { return this._deselFn && this._deselFn(k) ? 2 : this._selFn && this._selFn(k) ? 1 : 0; }
 
 	_$getPill (item) {
-		const $btnPill = $(`<div class="fltr__pill">${this._displayFn ? this._displayFn(item.item) : item.item}</div>`)
-			.click(() => {
+		const displayText = this._displayFn ? this._displayFn(item.item) : item.item;
+
+		const $btnPill = $(`<div class="fltr__pill">${displayText}</div>`)
+			.click(evt => {
+				if (evt.shiftKey) {
+					const nxtState = {};
+					Object.keys(this._state).forEach(k => nxtState[k] = 0);
+					this._proxyAssign("state", "_state", "__state", nxtState, true);
+				}
+
 				if (++this._state[item.item] > 2) this._state[item.item] = 0;
 			})
 			.contextmenu((evt) => {
@@ -827,10 +1263,12 @@ class Filter extends FilterBase {
 		const hook = () => {
 			const val = FilterBox._PILL_STATES[this._state[item.item]];
 			$btnPill.attr("state", val);
-			if (item.changeFn) item.changeFn(item.item, val);
+			if (item.pFnChange) item.pFnChange(item.item, val);
 		};
 		this._addHook("state", item.item, hook);
 		hook();
+
+		item.searchText = displayText.toLowerCase();
 
 		return $btnPill;
 	}
@@ -852,10 +1290,12 @@ class Filter extends FilterBase {
 	}
 
 	_$getMini (item) {
+		const toDisplay = this._displayFnMini ? this._displayFnMini(item.item) : this._displayFn ? this._displayFn(item.item) : item.item;
+
 		// This one-liner is slightly more performant than doing it nicely
 		const $btnMini = $(
-			`<div class="fltr__mini-pill ${this._filterBox.isMinisHidden(this.header) ? "hidden" : ""} ${this._deselFn && this._deselFn(item.item) ? "fltr__mini-pill--default-desel" : ""} ${this._selFn && this._selFn(item.item) ? "fltr__mini-pill--default-sel" : ""}" state="${FilterBox._PILL_STATES[this._state[item.item]]}">${this._displayFn ? this._displayFn(item.item) : item.item}</div>`
-		).click(() => {
+			`<div class="fltr__mini-pill ${this._filterBox.isMinisHidden(this.header) ? "ve-hidden" : ""} ${this._deselFn && this._deselFn(item.item) ? "fltr__mini-pill--default-desel" : ""} ${this._selFn && this._selFn(item.item) ? "fltr__mini-pill--default-sel" : ""}" state="${FilterBox._PILL_STATES[this._state[item.item]]}">${toDisplay}</div>`,
+		).title(`${this._displayFnTitle ? `${this._displayFnTitle(item.item)} (` : ""}Filter: ${this.header}${this._displayFnTitle ? ")" : ""}`).click(() => {
 			this._state[item.item] = 0;
 			this._filterBox.fireChangeEvent();
 		});
@@ -863,22 +1303,28 @@ class Filter extends FilterBase {
 		const hook = () => $btnMini.attr("state", FilterBox._PILL_STATES[this._state[item.item]]);
 		this._addHook("state", item.item, hook);
 
-		const hideHook = () => $btnMini.toggleClass("hidden", this._filterBox.isMinisHidden(this.header));
+		const hideHook = () => $btnMini.toggleClass("ve-hidden", this._filterBox.isMinisHidden(this.header));
 		this._filterBox.registerMinisHiddenHook(this.header, hideHook);
 
 		return $btnMini;
 	}
 
 	_doSetPillsAll () {
-		Object.keys(this._state).forEach(k => this._state[k] = 1);
+		Object.keys(this._state).forEach(k => {
+			if (this._state[k] !== 1) this._state[k] = 1;
+		});
 	}
 
 	_doSetPillsClear () {
-		Object.keys(this._state).forEach(k => this._state[k] = 0);
+		Object.keys(this._state).forEach(k => {
+			if (this._state[k] !== 0) this._state[k] = 0;
+		});
 	}
 
 	_doSetPillsNone () {
-		Object.keys(this._state).forEach(k => this._state[k] = 2);
+		Object.keys(this._state).forEach(k => {
+			if (this._state[k] !== 2) this._state[k] = 2;
+		});
 	}
 
 	_doSetPinsDefault () {
@@ -886,24 +1332,26 @@ class Filter extends FilterBase {
 	}
 
 	_$getHeaderControls (opts) {
-		const $btnAll = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn--all">All</button>`).click(() => this._doSetPillsAll());
-		const $btnClear = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn--clear">Clear</button>`).click(() => this._doSetPillsClear());
-		const $btnNone = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn--none">None</button>`).click(() => this._doSetPillsNone());
-		const $btnDefault = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"}">Default</button>`).click(() => this._doSetPinsDefault());
+		const $btnAll = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn--all w-100">All</button>`).click(() => this._doSetPillsAll());
+		const $btnClear = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn--clear w-100">Clear</button>`).click(() => this._doSetPillsClear());
+		const $btnNone = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn--none w-100">None</button>`).click(() => this._doSetPillsNone());
+		const $btnDefault = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} w-100">Default</button>`).click(() => this._doSetPinsDefault());
 
-		const $wrpStateBtns = $$`<div class="btn-group">${$btnAll}${$btnClear}${$btnNone}${$btnDefault}</div>`;
+		const $wrpStateBtns = $$`<div class="btn-group flex-v-center w-100">${$btnAll}${$btnClear}${$btnNone}${$btnDefault}</div>`;
+		const $wrpStateBtnsOuter = $$`<div class="flex-v-center fltr__h-wrp-state-btns-outer">${$wrpStateBtns}</div>`;
+		this._$getHeaderControls_addExtraStateBtns(opts, $wrpStateBtnsOuter);
 
-		const $wrpSummary = $(`<div class="flex-v-center"/>`).hide();
+		const $wrpSummary = $(`<div class="flex-vh-center"></div>`).hideVe();
 
-		const $btnCombineBlue = $$`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn-logic--blue fltr__h-btn-logic" title="Positive matches mode for this filter. AND requires all blues to match, OR requires at least one blue to match."/>`
-			.click(() => this._meta.combineBlue = this._meta.combineBlue === "or" ? "and" : "or");
-		const hookCombineBlue = () => $btnCombineBlue.text(this._meta.combineBlue.toUpperCase());
+		const $btnCombineBlue = $$`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn-logic--blue fltr__h-btn-logic w-100" title="Positive matches mode for this filter. AND requires all blues to match, OR requires at least one blue to match, XOR requires exactly one blue to match."></button>`
+			.click(() => this._meta.combineBlue = Filter._getNextCombineMode(this._meta.combineBlue));
+		const hookCombineBlue = () => $btnCombineBlue.text(`${this._meta.combineBlue}`.toUpperCase());
 		this._addHook("meta", "combineBlue", hookCombineBlue);
 		hookCombineBlue();
 
-		const $btnCombineRed = $$`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn-logic--red fltr__h-btn-logic" title="Negative match mode for this filter. AND requires all reds to match, OR requires at least one red to match."/>`
-			.click(() => this._meta.combineRed = this._meta.combineRed === "or" ? "and" : "or");
-		const hookCombineRed = () => $btnCombineRed.text(this._meta.combineRed.toUpperCase());
+		const $btnCombineRed = $$`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"} fltr__h-btn-logic--red fltr__h-btn-logic w-100" title="Negative match mode for this filter. AND requires all reds to match, OR requires at least one red to match, XOR requires exactly one red to match."></button>`
+			.click(() => this._meta.combineRed = Filter._getNextCombineMode(this._meta.combineRed));
+		const hookCombineRed = () => $btnCombineRed.text(`${this._meta.combineRed}`.toUpperCase());
 		this._addHook("meta", "combineRed", hookCombineRed);
 		hookCombineRed();
 
@@ -911,41 +1359,45 @@ class Filter extends FilterBase {
 			.click(() => this._meta.isHidden = !this._meta.isHidden);
 		const hookShowHide = () => {
 			$btnShowHide.toggleClass("active", this._meta.isHidden);
-			$wrpStateBtns.toggle(!this._meta.isHidden);
-			$wrpSummary.toggle(this._meta.isHidden).empty();
+			$wrpStateBtnsOuter.toggleVe(!this._meta.isHidden);
+			$wrpSummary.toggleClass("ve-hidden", !this._meta.isHidden).empty();
 
 			// render summary
 			const cur = this.getValues()[this.header];
 
-			$(`<span class="fltr__summary_item fltr__summary_item--include"/>`)
-				.attr("title", `${cur._totals.yes} hidden "required" tags`)
+			$(`<span class="fltr__summary_item fltr__summary_item--include"></span>`)
+				.title(`${cur._totals.yes} hidden "required" tags`)
 				.text(cur._totals.yes)
-				.toggle(!!cur._totals.yes)
+				.toggleVe(!!cur._totals.yes)
 				.appendTo($wrpSummary);
 
-			$(`<span class="fltr__summary_item_spacer"/>`)
-				.toggle(!!(cur._totals.yes && cur._totals.no))
+			$(`<span class="fltr__summary_item_spacer"></span>`)
+				.toggleVe(!!(cur._totals.yes && cur._totals.no))
 				.appendTo($wrpSummary);
 
-			$(`<span class="fltr__summary_item fltr__summary_item--exclude"/>`)
-				.attr("title", `${cur._totals.no} hidden "excluded" tags`)
+			$(`<span class="fltr__summary_item fltr__summary_item--exclude"></span>`)
+				.title(`${cur._totals.no} hidden "excluded" tags`)
 				.text(cur._totals.no)
-				.toggle(!!cur._totals.no)
+				.toggleVe(!!cur._totals.no)
 				.appendTo($wrpSummary);
 		};
 		this._addHook("meta", "isHidden", hookShowHide);
 		hookShowHide();
 
 		return $$`
-		<div class="flex-v-center">
-			${$wrpStateBtns}
+		<div class="flex-v-center fltr__h-wrp-btns-outer">
 			${$wrpSummary}
-			<span class="btn-group ml-2">
+			${$wrpStateBtnsOuter}
+			<span class="btn-group ml-2 flex-v-center">
 				${$btnCombineBlue}
 				${$btnCombineRed}
 			</span>
 			${$btnShowHide}
 		</div>`;
+	}
+
+	_$getHeaderControls_addExtraStateBtns () {
+		// To be optionally implemented by child classes
 	}
 
 	/**
@@ -961,16 +1413,16 @@ class Filter extends FilterBase {
 
 		const $wrpControls = this._$getHeaderControls(opts);
 
-		this.__$wrpPills = $$`<div class="fltr__wrp-pills ${this._groupFn ? "fltr__wrp-subs" : ""}"/>`;
-		const hook = () => this.__$wrpPills.toggle(!this._meta.isHidden);
+		this.__$wrpPills = $$`<div class="fltr__wrp-pills ${this._groupFn ? "fltr__wrp-subs" : ""}"></div>`;
+		const hook = () => this.__$wrpPills.toggleVe(!this._meta.isHidden);
 		this._addHook("meta", "isHidden", hook);
 		hook();
 
 		if (this._nests) {
-			const $wrpNestHead = $(`<div class="fltr__wrp-pills--sub"/>`).appendTo(this.__$wrpPills);
-			this.__$wrpNestHeadInner = $(`<div class="flex flex-wrap"/>`).appendTo($wrpNestHead);
+			const $wrpNestHead = $(`<div class="fltr__wrp-pills--sub"></div>`).appendTo(this.__$wrpPills);
+			this.__$wrpNestHeadInner = $(`<div class="flex flex-wrap"></div>`).appendTo($wrpNestHead);
 
-			const $wrpNestHeadSummary = $(`<div class="fltr__summary_nest"/>`).appendTo($wrpNestHead);
+			const $wrpNestHeadSummary = $(`<div class="fltr__summary_nest"></div>`).appendTo($wrpNestHead);
 
 			this._updateNestSummary = () => {
 				const stats = {high: 0, low: 0};
@@ -981,13 +1433,13 @@ class Filter extends FilterBase {
 				$wrpNestHeadSummary.empty();
 				if (stats.high) {
 					$(`<span class="fltr__summary_item fltr__summary_item--include">${stats.high}</span>`)
-						.attr("title", `${stats.high} hidden "required" tag${stats.high === 1 ? "" : "s"}`)
+						.title(`${stats.high} hidden "required" tag${stats.high === 1 ? "" : "s"}`)
 						.appendTo($wrpNestHeadSummary);
 				}
-				if (stats.high && stats.low) $(`<span class="fltr__summary_item_spacer"/>`).appendTo($wrpNestHeadSummary);
+				if (stats.high && stats.low) $(`<span class="fltr__summary_item_spacer"></span>`).appendTo($wrpNestHeadSummary);
 				if (stats.low) {
 					$(`<span class="fltr__summary_item fltr__summary_item--exclude">${stats.low}</span>`)
-						.attr("title", `${stats.low} hidden "excluded" tag${stats.low === 1 ? "" : "s"}`)
+						.title(`${stats.low} hidden "excluded" tag${stats.low === 1 ? "" : "s"}`)
 						.appendTo($wrpNestHeadSummary);
 				}
 			};
@@ -998,10 +1450,12 @@ class Filter extends FilterBase {
 		this._doRenderPills();
 		this._doRenderMiniPills();
 
+		const $btnMobToggleControls = this._$getBtnMobToggleControls($wrpControls);
+
 		this.__$wrpFilter = $$`<div>
-			${opts.isFirst ? "" : `<div class="fltr__dropdown-divider ${opts.isMulti ? "fltr__dropdown-divider--indented" : ""} mb-1"/>`}
+			${opts.isFirst ? "" : `<div class="fltr__dropdown-divider ${opts.isMulti ? "fltr__dropdown-divider--indented" : ""} mb-1"></div>`}
 			<div class="split fltr__h ${this._minimalUi ? "fltr__minimal-hide" : ""} mb-1">
-				<div class="ml-2">${opts.isMulti ? "\u2012" : ""} ${this.header}</div>
+				<div class="ml-2 fltr__h-text flex-h-center">${opts.isMulti ? `<span class="mr-2">\u2012</span>` : ""}${this._getRenderedHeader()}${$btnMobToggleControls}</div>
 				${$wrpControls}
 			</div>
 			${this.__$wrpPills}
@@ -1025,7 +1479,8 @@ class Filter extends FilterBase {
 			const totalKey = v === 0 ? "ignored" : v === 1 ? "yes" : "no";
 			out._totals[totalKey]++;
 		});
-		out._andOr = {blue: this._meta.combineBlue, red: this._meta.combineRed};
+		out._combineBlue = this._meta.combineBlue;
+		out._combineRed = this._meta.combineRed;
 		return {[this.header]: out};
 	}
 
@@ -1041,12 +1496,12 @@ class Filter extends FilterBase {
 	resetShallow () { return this.reset(); }
 
 	_doRenderPills () {
-		if (this._itemSortFn) this._items.sort(this._itemSortFn);
+		if (this._itemSortFn) this._items.sort(this._isSortByDisplayItems && this._displayFn ? (a, b) => this._itemSortFn(this._displayFn(a.item), this._displayFn(b.item)) : this._itemSortFn);
 		this._items.forEach(it => {
 			if (!it.$rendered) {
 				it.$rendered = this._$getPill(it);
 				if (it.nest) {
-					const hook = () => it.$rendered.toggle(!this._nestsHidden[it.nest]);
+					const hook = () => it.$rendered.toggleVe(!this._nestsHidden[it.nest]);
 					this._addHook("nestsHidden", it.nest, hook);
 					hook();
 				}
@@ -1054,44 +1509,63 @@ class Filter extends FilterBase {
 
 			if (this._groupFn) {
 				const group = this._groupFn(it);
-				if (!this._pillGroupsMeta[group]) {
-					this._pillGroupsMeta[group] = {
-						$hrDivider: $(`<hr class="fltr__dropdown-divider--sub">`).appendTo(this.__$wrpPills),
-						$wrpPills: $(`<div class="fltr__wrp-pills--sub"/>`).appendTo(this.__$wrpPills)
-					};
-
-					Object.entries(this._pillGroupsMeta)
-						.sort((a, b) => SortUtil.ascSortLower(a[0], b[0]))
-						.forEach(([groupKey, groupMeta], i) => {
-							groupMeta.$hrDivider.appendTo(this.__$wrpPills);
-							if (i === 0 && this._nests == null) groupMeta.$hrDivider.hide();
-							groupMeta.$wrpPills.appendTo(this.__$wrpPills);
-						});
-
-					if (this._nests) {
-						this._pillGroupsMeta[group].toggleDividerFromNestVisibility = () => {
-							const groupItems = this._items.filter(it => this._groupFn(it) === group);
-							const hiddenGroupItems = groupItems.filter(it => this._nestsHidden[it.nest]);
-							this._pillGroupsMeta[group].$hrDivider.toggle(groupItems.length !== hiddenGroupItems.length);
-						};
-
-						// bind group dividers to show/hide depending on nest visibility state
-						Object.keys(this._nests).forEach(nestName => {
-							const hook = () => this._pillGroupsMeta[group].toggleDividerFromNestVisibility();
-							this._addHook("nestsHidden", nestName, hook);
-							hook();
-							this._pillGroupsMeta[group].toggleDividerFromNestVisibility();
-						});
-					}
-				}
-
+				this._doRenderPills_doRenderWrpGroup(group);
 				this._pillGroupsMeta[group].$wrpPills.append(it.$rendered);
 			} else this.__$wrpPills.append(it.$rendered);
 		});
 	}
 
+	_doRenderPills_doRenderWrpGroup (group) {
+		const existingMeta = this._pillGroupsMeta[group];
+		if (existingMeta && !existingMeta.isAttached) {
+			existingMeta.$hrDivider.appendTo(this.__$wrpPills);
+			existingMeta.$wrpPills.appendTo(this.__$wrpPills);
+			existingMeta.isAttached = true;
+		}
+		if (existingMeta) return
+
+		this._pillGroupsMeta[group] = {
+			$hrDivider: this._doRenderPills_doRenderWrpGroup_$getHrDivider(group).appendTo(this.__$wrpPills),
+			$wrpPills: this._doRenderPills_doRenderWrpGroup_$getWrpPillsSub(group).appendTo(this.__$wrpPills),
+			isAttached: true,
+		};
+
+		Object.entries(this._pillGroupsMeta)
+			.sort((a, b) => SortUtil.ascSortLower(a[0], b[0]))
+			.forEach(([groupKey, groupMeta], i) => {
+				groupMeta.$hrDivider.appendTo(this.__$wrpPills);
+				groupMeta.$hrDivider.toggleVe(!(i === 0 && this._nests == null));
+				groupMeta.$wrpPills.appendTo(this.__$wrpPills);
+			});
+
+		if (this._nests) {
+			this._pillGroupsMeta[group].toggleDividerFromNestVisibility = () => {
+				const groupItems = this._items.filter(it => this._groupFn(it) === group);
+				const hiddenGroupItems = groupItems.filter(it => this._nestsHidden[it.nest]);
+				this._pillGroupsMeta[group].$hrDivider.toggleVe(groupItems.length !== hiddenGroupItems.length);
+			};
+
+			// bind group dividers to show/hide depending on nest visibility state
+			Object.keys(this._nests).forEach(nestName => {
+				const hook = () => this._pillGroupsMeta[group].toggleDividerFromNestVisibility();
+				this._addHook("nestsHidden", nestName, hook);
+				hook();
+				this._pillGroupsMeta[group].toggleDividerFromNestVisibility();
+			});
+		}
+	}
+
+	_doRenderPills_doRenderWrpGroup_$getHrDivider () { return $(`<hr class="fltr__dropdown-divider--sub hr-2 mx-3">`); }
+	_doRenderPills_doRenderWrpGroup_$getWrpPillsSub () { return $(`<div class="fltr__wrp-pills--sub"></div>`); }
+
 	_doRenderMiniPills () {
-		this._items.forEach(it => {
+		// create a list view so we can freely sort
+		const view = this._items.slice(0);
+		if (this._itemSortFnMini || this._itemSortFn) {
+			const fnSort = this._itemSortFnMini || this._itemSortFn;
+			view.sort(this._isSortByDisplayItems && this._displayFn ? (a, b) => fnSort(this._displayFn(a.item), this._displayFn(b.item)) : fnSort);
+		}
+		view.forEach(it => {
 			// re-append existing elements to sort them
 			(it.$mini = it.$mini || this._$getMini(it)).appendTo(this.__$wrpMini);
 		});
@@ -1171,13 +1645,16 @@ class Filter extends FilterBase {
 
 	addItem (item) {
 		if (item == null) return;
-		if (item instanceof Array) item.forEach(it => this.addItem(it));
-		else if (!this._items.find(it => Filter._isItemsEqual(it, item))) {
+		if (item instanceof Array) {
+			const len = item.length;
+			for (let i = 0; i < len; ++i) this.addItem(item[i]);
+		} else if (!this.__itemsSet.has(item.item || item)) {
 			item = item instanceof FilterItem ? item : new FilterItem({item});
-			Filter._validateItemNests([item], this._nests);
+			Filter._validateItemNest(item, this._nests);
 
 			this._isItemsDirty = true;
 			this._items.push(item);
+			this.__itemsSet.add(item.item);
 			if (this._state[item.item] == null) this._defaultItemState(item);
 		}
 	}
@@ -1219,14 +1696,19 @@ class Filter extends FilterBase {
 		}
 	}
 
+	_toDisplay_getMappedEntryVal (entryVal) {
+		if (!(entryVal instanceof Array)) entryVal = [entryVal];
+		entryVal = entryVal.map(it => it instanceof FilterItem ? it : new FilterItem({item: it}));
+		return entryVal;
+	}
+
 	toDisplay (boxState, entryVal) {
 		const filterState = boxState[this.header];
 		if (!filterState) return true;
 
 		const totals = filterState._totals;
 
-		if (!(entryVal instanceof Array)) entryVal = [entryVal];
-		entryVal = entryVal.map(it => it instanceof FilterItem ? it : new FilterItem({item: it}));
+		entryVal = this._toDisplay_getMappedEntryVal(entryVal);
 
 		const isUmbrella = () => {
 			if (this._umbrellaItems) {
@@ -1242,45 +1724,409 @@ class Filter extends FilterBase {
 		let hide = false;
 		let display = false;
 
-		if (filterState._andOr.blue === "or") {
-			// default to displaying
-			if (totals.yes === 0) display = true;
+		switch (filterState._combineBlue) {
+			case "or": {
+				// default to displaying
+				if (totals.yes === 0) display = true;
 
-			// if any are 1 (blue) include if they match
-			display = display || entryVal.some(fi => filterState[fi.item] === 1 || isUmbrella());
-		} else {
-			const totalYes = entryVal.filter(fi => filterState[fi.item] === 1).length;
-			display = !totals.yes || totals.yes === totalYes;
+				// if any are 1 (blue) include if they match
+				display = display || entryVal.some(fi => filterState[fi.item] === 1 || isUmbrella());
+
+				break;
+			}
+			case "xor": {
+				// default to displaying
+				if (totals.yes === 0) display = true;
+
+				// if any are 1 (blue) include if precisely one matches
+				display = display || entryVal.filter(fi => filterState[fi.item] === 1 || isUmbrella()).length === 1;
+
+				break;
+			}
+			case "and": {
+				const totalYes = entryVal.filter(fi => filterState[fi.item] === 1).length;
+				display = !totals.yes || totals.yes === totalYes;
+
+				break;
+			}
+			default: throw new Error(`Unhandled combine mode "${filterState._combineBlue}"`);
 		}
 
-		if (filterState._andOr.red === "or") {
-			// if any are 2 (red) exclude if they match
-			hide = hide || entryVal.filter(fi => !fi.isIgnoreRed).some(fi => filterState[fi.item] === 2);
-		} else {
-			const totalNo = entryVal.filter(fi => !fi.isIgnoreRed).filter(fi => filterState[fi.item] === 2).length;
-			hide = totals.no && totals.no === totalNo;
+		switch (filterState._combineRed) {
+			case "or": {
+				// if any are 2 (red) exclude if they match
+				hide = hide || entryVal.filter(fi => !fi.isIgnoreRed).some(fi => filterState[fi.item] === 2);
+
+				break;
+			}
+			case "xor": {
+				// if exactl one is 2 (red) exclude if it matches
+				hide = hide || entryVal.filter(fi => !fi.isIgnoreRed).filter(fi => filterState[fi.item] === 2).length === 1;
+
+				break;
+			}
+			case "and": {
+				const totalNo = entryVal.filter(fi => !fi.isIgnoreRed).filter(fi => filterState[fi.item] === 2).length;
+				hide = totals.no && totals.no === totalNo;
+
+				break;
+			}
+			default: throw new Error(`Unhandled combine mode "${filterState._combineRed}"`);
 		}
 
 		return display && !hide;
+	}
+
+	_doInvertPins () {
+		const cur = MiscUtil.copy(this._state);
+		Object.keys(this._state).forEach(k => this._state[k] = cur[k] === 1 ? 0 : 1);
 	}
 
 	getDefaultMeta () {
 		// Key order is important, as @filter tags depend on it
 		return {
 			...Filter._DEFAULT_META,
-			...super.getDefaultMeta()
+			...super.getDefaultMeta(),
 		};
+	}
+
+	handleSearch (searchTerm) {
+		const isHeaderMatch = this.header.toLowerCase().includes(searchTerm);
+
+		if (isHeaderMatch) {
+			this._items.forEach(it => {
+				if (!it.$rendered) return;
+				it.$rendered.toggleClass("fltr__hidden--search", false);
+			});
+
+			if (this.__$wrpFilter) this.__$wrpFilter.toggleClass("fltr__hidden--search", false);
+
+			return true;
+		}
+
+		let visibleCount = 0;
+		this._items.forEach(it => {
+			if (!it.$rendered) return;
+			const isVisible = it.searchText.includes(searchTerm);
+			it.$rendered.toggleClass("fltr__hidden--search", !isVisible);
+			if (isVisible) visibleCount++;
+		});
+
+		if (this.__$wrpFilter) this.__$wrpFilter.toggleClass("fltr__hidden--search", visibleCount === 0);
+
+		return visibleCount !== 0;
+	}
+
+	static _getNextCombineMode (combineMode) {
+		let ix = Filter._COMBINE_MODES.indexOf(combineMode);
+		if (ix === -1) ix = (Filter._COMBINE_MODES.length - 1);
+		if (++ix === Filter._COMBINE_MODES.length) ix = 0;
+		return Filter._COMBINE_MODES[ix];
+	}
+
+	_doTeardown () {
+		this._items.forEach(it => {
+			if (it.$rendered) it.$rendered.detach();
+			if (it.$mini) it.$mini.detach();
+		});
+
+		Object.values(this._nests || {})
+			.filter(nestMeta => nestMeta._$btnNest)
+			.forEach(nestMeta => nestMeta._$btnNest.detach());
+
+		Object.values(this._pillGroupsMeta || {})
+			.forEach(it => {
+				it.$hrDivider.detach();
+				it.$wrpPills.detach();
+				it.isAttached = false;
+			});
 	}
 }
 Filter._DEFAULT_META = {
 	combineBlue: "or",
-	combineRed: "or"
+	combineRed: "or",
 };
+Filter._COMBINE_MODES = ["or", "and", "xor"];
+
+class FilterTransientOptions {
+	/**
+	 * @param opts Options object.
+	 * @param [opts.isExtendDefaultState]
+	 */
+	constructor (opts) {
+		this.isExtendDefaultState = opts.isExtendDefaultState;
+	}
+}
+
+class SourceFilterItem extends FilterItem {
+	/**
+	 * @param options
+	 * @param [options.isOtherSource] If this is not the primary source of the entity.
+	 */
+	constructor (options) {
+		super(options);
+		this.isOtherSource = options.isOtherSource;
+	}
+}
+
+class SourceFilter extends Filter {
+	constructor (opts) {
+		opts = opts || {};
+
+		opts.header = opts.header === undefined ? FilterBox.SOURCE_HEADER : opts.header;
+		opts.displayFn = opts.displayFn === undefined ? item => Parser.sourceJsonToFullCompactPrefix(item.item || item) : opts.displayFn;
+		opts.itemSortFn = opts.itemSortFn === undefined ? (a, b) => SortUtil.ascSortLower(Parser.sourceJsonToFull(a.item), Parser.sourceJsonToFull(b.item)) : opts.itemSortFn;
+		opts.groupFn = opts.groupFn === undefined ? SourceUtil.getFilterGroup : opts.groupFn;
+		opts.selFn = opts.selFn === undefined ? PageFilter.defaultSourceSelFn : opts.selFn
+
+		super(opts);
+
+		this.__tmpState = {ixAdded: 0};
+		this._tmpState = this._getProxy("tmpState", this.__tmpState);
+	}
+
+	doSetPillsClear () { return this._doSetPillsClear(); }
+
+	addItem (item) {
+		const out = super.addItem(item);
+		this._tmpState.ixAdded++;
+		return out;
+	}
+
+	removeItem (item) {
+		const out = super.removeItem(item);
+		this._tmpState.ixAdded--;
+		return out;
+	}
+
+	_$getHeaderControls_addExtraStateBtns (opts, $wrpStateBtnsOuter) {
+		const $btnSupplements = $(`<button class="btn btn-default w-100 ${opts.isMulti ? "btn-xxs" : "btn-xs"}" title="SHIFT to include UA/etc.">Core/Supplements</button>`)
+			.click(evt => this._doSetPinsSupplements(evt.shiftKey));
+
+		const $btnAdventures = $(`<button class="btn btn-default w-100 ${opts.isMulti ? "btn-xxs" : "btn-xs"}" title="SHIFT to include UA/etc.">Adventures</button>`)
+			.click(evt => this._doSetPinsAdventures(evt.shiftKey));
+
+		const $btnHomebrew = $(`<button class="btn btn-default w-100 ${opts.isMulti ? "btn-xxs" : "btn-xs"}">Homebrew</button>`)
+			.click(() => this._doSetPinsHomebrew());
+		const hkIsBrewActive = () => {
+			const hasBrew = Object.keys(this.__state).some(src => SourceUtil.getFilterGroup(src) === 2);
+			$btnHomebrew.toggleClass("ve-hidden", !hasBrew);
+		};
+		this._addHook("tmpState", "ixAdded", hkIsBrewActive);
+		hkIsBrewActive();
+
+		const menu = ContextUtil.getMenu([
+			new ContextUtil.Action(
+				"Select All Standard Sources",
+				() => this._doSetPinsStandard(),
+			),
+			new ContextUtil.Action(
+				"Select All Non-Standard Sources",
+				() => this._doSetPinsNonStandard(),
+			),
+			new ContextUtil.Action(
+				"Select All Homebrew Sources",
+				() => this._doSetPinsHomebrew(),
+			),
+			null,
+			new ContextUtil.Action(
+				`Select "Vanilla" Sources`,
+				() => this._doSetPinsVanilla(),
+				{title: `Select a baseline set of sources suitable for any campaign.`},
+			),
+			null,
+			new ContextUtil.Action(
+				"Select SRD Sources",
+				() => this._doSetPinsSrd(),
+			),
+			null,
+			new ContextUtil.Action(
+				"Invert Selection",
+				() => this._doInvertPins(),
+			),
+		]);
+		const $btnBurger = $(`<button class="btn btn-default ${opts.isMulti ? "btn-xxs" : "btn-xs"}"><span class="glyphicon glyphicon-option-vertical"></span></button>`)
+			.click(evt => ContextUtil.pOpenMenu(evt, menu));
+
+		const $btnOnlyPrimary = $(`<button class="btn btn-default w-100 ${opts.isMulti ? "btn-xxs" : "btn-xs"}" title="Consider entities as belonging to every source they appear in (i.e. reprints) as well as their primary source">Include References</button>`)
+			.click(() => this._meta.isIncludeOtherSources = !this._meta.isIncludeOtherSources);
+		const hkIsIncludeOtherSources = () => {
+			$btnOnlyPrimary.toggleClass("active", !!this._meta.isIncludeOtherSources);
+		};
+		hkIsIncludeOtherSources();
+		this._addHook("meta", "isIncludeOtherSources", hkIsIncludeOtherSources);
+
+		$$`<div class="btn-group mr-2 w-100 flex-v-center mobile__m-1 mobile__mb-2">${$btnSupplements}${$btnAdventures}${$btnHomebrew}${$btnBurger}${$btnOnlyPrimary}</div>`.prependTo($wrpStateBtnsOuter);
+	}
+
+	_doSetPinsStandard () {
+		Object.keys(this._state).forEach(k => this._state[k] = SourceUtil.getFilterGroup(k) === 0 ? 1 : 0);
+	}
+
+	_doSetPinsNonStandard () {
+		Object.keys(this._state).forEach(k => this._state[k] = SourceUtil.getFilterGroup(k) === 1 ? 1 : 0);
+	}
+
+	_doSetPinsSupplements (isIncludeUnofficial) {
+		Object.keys(this._state).forEach(k => this._state[k] = SourceUtil.isCoreOrSupplement(k) && (isIncludeUnofficial || !SourceUtil.isNonstandardSource(k)) ? 1 : 0);
+	}
+
+	_doSetPinsAdventures (isIncludeUnofficial) {
+		Object.keys(this._state).forEach(k => this._state[k] = SourceUtil.isAdventure(k) && (isIncludeUnofficial || !SourceUtil.isNonstandardSource(k)) ? 1 : 0);
+	}
+
+	_doSetPinsHomebrew () {
+		Object.keys(this._state).forEach(k => this._state[k] = SourceUtil.getFilterGroup(k) === 2 ? 1 : 0);
+	}
+
+	_doSetPinsVanilla () {
+		Object.keys(this._state).forEach(k => this._state[k] = Parser.SOURCES_VANILLA.has(k) ? 1 : 0);
+	}
+
+	_doSetPinsSrd () {
+		SourceFilter._SRD_SOURCES = SourceFilter._SRD_SOURCES || new Set([SRC_PHB, SRC_MM, SRC_DMG]);
+
+		Object.keys(this._state).forEach(k => this._state[k] = SourceFilter._SRD_SOURCES.has(k) ? 1 : 0);
+
+		const srdFilter = this._filterBox.filters.find(it => it.isSrdFilter);
+		if (!srdFilter) return;
+		srdFilter.setValue("SRD", 1);
+	}
+
+	static getCompleteFilterSources (ent) {
+		return ent.otherSources
+			? [ent.source].concat(ent.otherSources.map(src => new SourceFilterItem({item: src.source, isIgnoreRed: true, isOtherSource: true})))
+			: ent.source;
+	}
+
+	_doRenderPills_doRenderWrpGroup_$getHrDivider (group) {
+		if (group !== 1) return super._doRenderPills_doRenderWrpGroup_$getHrDivider(group);
+
+		const $wrpSlider = $(`<div class="fltr__slider fltr-src__slider mt-1 mb-2"></div>`);
+		const $wrpWrpSlider = $$`<div class="w-100 flex pt-2 pb-5 mb-2 mt-1 fltr-src__wrp-slider">${$wrpSlider}</div>`.hideVe();
+
+		const $btnCancel = $(`<button class="btn btn-xs btn-default px-1">Cancel</button>`)
+			.click(() => {
+				$grpBtnsInactive.showVe();
+				$wrpWrpSlider.hideVe();
+				$grpBtnsActive.hideVe();
+			});
+
+		const $btnConfirm = $(`<button class="btn btn-xs btn-default px-1">Confirm</button>`)
+			.click(() => {
+				$grpBtnsInactive.showVe();
+				$wrpWrpSlider.hideVe();
+				$grpBtnsActive.hideVe();
+
+				const [min, max] = $wrpSlider.slider("values");
+				const allowedDateSet = new Set(dates.slice(min, max + 1).map(it => it.str));
+				const nxtState = {};
+				Object.keys(this._state)
+					.filter(k => SourceUtil.isNonstandardSource(k))
+					.forEach(k => {
+						const sourceDate = Parser.sourceJsonToDate(k);
+						nxtState[k] = allowedDateSet.has(sourceDate) ? 1 : 0
+					});
+				this._proxyAssign("state", "_state", "__state", nxtState);
+			});
+
+		let isInit = false;
+		let dates;
+		const $btnShowSlider = $(`<button class="btn btn-xxs btn-default px-1">Select by Date</button>`)
+			.click(() => {
+				if (isInit) $wrpSlider.slider("destroy");
+				isInit = true;
+
+				$grpBtnsInactive.hideVe();
+				$wrpWrpSlider.showVe();
+				$grpBtnsActive.showVe();
+
+				dates = Object.keys(this._state)
+					.filter(it => SourceUtil.isNonstandardSource(it))
+					.map(it => Parser.sourceJsonToDate(it))
+					.filter(Boolean)
+					.unique()
+					.map(it => ({str: it, date: new Date(it)}))
+					.sort((a, b) => SortUtil.ascSortDate(a.date, b.date))
+					.reverse();
+
+				const optsSlider = {
+					labels: dates.map(it => it.str),
+				};
+
+				$wrpSlider
+					.empty()
+					.slider({
+						min: 0,
+						max: dates.length - 1,
+						range: true,
+						values: [0, dates.length - 1],
+					})
+					.slider("pips", optsSlider)
+					.slider("float", optsSlider);
+			});
+
+		const $btnClear = $(`<button class="btn btn-xxs btn-default px-1">Clear</button>`)
+			.click(() => {
+				const nxtState = {};
+				Object.keys(this._state)
+					.filter(k => SourceUtil.isNonstandardSource(k))
+					.forEach(k => nxtState[k] = 0);
+				this._proxyAssign("state", "_state", "__state", nxtState);
+			});
+
+		const $grpBtnsActive = $$`<div class="flex-v-center btn-group">${$btnCancel}${$btnConfirm}</div>`.hideVe();
+		const $grpBtnsInactive = $$`<div class="flex-v-center btn-group">${$btnClear}${$btnShowSlider}</div>`;
+
+		return $$`<div class="flex-col w-100">
+			${super._doRenderPills_doRenderWrpGroup_$getHrDivider()}
+			<div class="mb-1 flex-h-right">${$grpBtnsActive}${$grpBtnsInactive}</div>
+			${$wrpWrpSlider}
+		</div>`
+	}
+
+	_toDisplay_getMappedEntryVal (entryVal) {
+		entryVal = super._toDisplay_getMappedEntryVal(entryVal);
+		if (!this._meta.isIncludeOtherSources) entryVal = entryVal.filter(it => !it.isOtherSource);
+		return entryVal;
+	}
+
+	getSources () {
+		const out = {
+			all: [],
+			official: [],
+			unofficial: [],
+			homebrew: [],
+		};
+		this._items.forEach(it => {
+			out.all.push(it.item);
+			switch (this._groupFn(it)) {
+				case 0: out.official.push(it.item); break;
+				case 1: out.unofficial.push(it.item); break;
+				case 2: out.homebrew.push(it.item); break;
+			}
+		});
+		return out;
+	}
+
+	getDefaultMeta () {
+		// Key order is important, as @filter tags depend on it
+		return {
+			...super.getDefaultMeta(),
+			...SourceFilter._DEFAULT_META,
+		};
+	}
+}
+SourceFilter._DEFAULT_META = {
+	isIncludeOtherSources: false,
+}
+SourceFilter._SRD_SOURCES = null;
 
 class RangeFilter extends FilterBase {
 	/**
 	 * @param opts Options object.
-	 * @param [opts.header] Filter header.
+	 * @param opts.header Filter header (name)
+	 * @param [opts.headerHelp] Filter header help text (tooltip)
 	 * @param [opts.min] Minimum slider value.
 	 * @param [opts.max] Maximum slider value.
 	 * @param [opts.isLabelled] If this slider has labels.
@@ -1288,6 +2134,7 @@ class RangeFilter extends FilterBase {
 	 * @param [opts.isAllowGreater] If this slider should allow all items greater than its max.
 	 * @param [opts.suffix] Suffix to add to numbers displayed above slider.
 	 * @param [opts.labelSortFn] Function used to sort labels if new labels are added. Defaults to ascending alphabetical.
+	 * @param [opts.labelDisplayFn] Function which converts a lable to a display value.
 	 */
 	constructor (opts) {
 		super(opts);
@@ -1297,10 +2144,13 @@ class RangeFilter extends FilterBase {
 
 		this._min = Number(opts.min || 0);
 		this._max = Number(opts.max || 0);
+		this._hasPredefinedMin = opts.min != null;
+		this._hasPredefinedMax = opts.max != null;
 		this._labels = opts.isLabelled ? opts.labels : null;
 		this._isAllowGreater = !!opts.isAllowGreater;
 		this._suffix = opts.suffix;
 		this._labelSortFn = opts.labelSortFn === undefined ? SortUtil.ascSort : opts.labelSortFn;
+		this._labelDisplayFn = opts.labelDisplayFn;
 
 		this._filterBox = null;
 		Object.assign(
@@ -1309,27 +2159,69 @@ class RangeFilter extends FilterBase {
 				min: this._min,
 				max: this._max,
 				curMin: this._min,
-				curMax: this._max
-			}
+				curMax: this._max,
+			},
 		);
+		this.__$wrpFilter = null;
 		this.__$wrpMini = null;
 		this._$btnsMini = [];
 		this._$slider = null;
+
+		this._labelSearchCache = null;
 	}
+
+	set isUseDropdowns (val) { this._meta.isUseDropdowns = !!val; }
 
 	getSaveableState () {
 		return {
 			[this.header]: {
 				...this.getBaseSaveableState(),
-				state: {...this.__state}
-			}
+				state: {...this.__state},
+			},
 		};
 	}
 
 	setStateFromLoaded (filterState) {
 		if (filterState && filterState[this.header]) {
 			const toLoad = filterState[this.header];
+
+			// region Ensure the provided min/max are a lower/upper bounds for the range to be set
+			if (this._hasPredefinedMax) {
+				const tgt = (toLoad.state || {});
+
+				if (tgt.max == null) tgt.max = this._max;
+				else if (tgt.max > this._max) tgt.max = this._max;
+
+				if (tgt.curMax == null) tgt.curMax = tgt.max;
+				else if (tgt.curMax > tgt.max) tgt.curMax = tgt.max;
+			}
+
+			if (this._hasPredefinedMin) {
+				const tgt = (toLoad.state || {});
+
+				if (tgt.min == null) tgt.min = this._min;
+				else if (tgt.min < this._min) tgt.min = this._min;
+
+				if (tgt.curMin == null) tgt.curMin = tgt.min;
+				else if (tgt.curMin < tgt.min) tgt.curMin = tgt.min;
+			}
+			// endregion
+
 			this.setBaseStateFromLoaded(toLoad);
+
+			// Reduce the maximum/minimum ranges to their current values +/-1
+			//   This allows the range filter to recover from being stretched out by homebrew
+			//   The off-by-one trick is to prevent later filter expansion from assuming the filters are set to their min/max
+			if (toLoad.state && !this._labels) {
+				if (!this._hasPredefinedMax && toLoad.state.curMax != null && toLoad.state.max != null) {
+					if (toLoad.state.curMax + 1 < toLoad.state.max) toLoad.state.max = toLoad.state.curMax + 1;
+				}
+
+				if (!this._hasPredefinedMin && toLoad.state.curMin != null && toLoad.state.min != null) {
+					if (toLoad.state.curMin - 1 > toLoad.state.min) toLoad.state.min = toLoad.state.curMin - 1;
+				}
+			}
+
 			Object.assign(this._state, toLoad.state);
 		}
 	}
@@ -1342,10 +2234,10 @@ class RangeFilter extends FilterBase {
 
 		const serSliderState = [
 			this._state.min !== this._state.curMin ? `min=${this._state.curMin}` : null,
-			this._state.max !== this._state.curMax ? `max=${this._state.curMax}` : null
+			this._state.max !== this._state.curMax ? `max=${this._state.curMax}` : null,
 		].filter(Boolean);
 		if (serSliderState.length) {
-			out.push(UrlUtil.packSubHash(FilterBase.getSubHashPrefix("state", this.header), serSliderState));
+			out.push(UrlUtil.packSubHash(this.getSubHashPrefix("state", this.header), serSliderState));
 		}
 
 		return out.length ? out : null;
@@ -1408,20 +2300,20 @@ class RangeFilter extends FilterBase {
 			{
 				$ele: $(`<button class="btn btn-default btn-xs mr-2">Show as Dropdowns</button>`),
 				stateName: "meta",
-				stateProp: "_meta"
-			}
+				stateProp: "_meta",
+			},
 		);
 		const $btnReset = $(`<button class="btn btn-default btn-xs">Reset</button>`).click(() => this.reset());
 		const $wrpBtns = $$`<div>${$btnForceMobile}${$btnReset}</div>`;
 
-		const $wrpSummary = $(`<div class="flex-v-center fltr__summary_item fltr__summary_item--include"/>`).hide();
+		const $wrpSummary = $(`<div class="flex-v-center fltr__summary_item fltr__summary_item--include"></div>`).hideVe();
 
 		const $btnShowHide = $(`<button class="btn btn-default btn-xs ml-2 ${this._meta.isHidden ? "active" : ""}">Hide</button>`)
 			.click(() => this._meta.isHidden = !this._meta.isHidden);
-		const hook = () => {
+		const hkIsHidden = () => {
 			$btnShowHide.toggleClass("active", this._meta.isHidden);
-			$wrpBtns.toggle(!this._meta.isHidden);
-			$wrpSummary.toggle(this._meta.isHidden);
+			$wrpBtns.toggleVe(!this._meta.isHidden);
+			$wrpSummary.toggleVe(this._meta.isHidden);
 
 			// render summary
 			const cur = this.getValues()[this.header];
@@ -1429,15 +2321,14 @@ class RangeFilter extends FilterBase {
 			const isRange = !cur.isMinVal && !cur.isMaxVal;
 			const isCapped = !cur.isMinVal || !cur.isMaxVal;
 			$wrpSummary
-				.attr("title", isRange ? `Hidden range` : isCapped ? `Hidden limit` : "")
+				.title(isRange ? `Hidden range` : isCapped ? `Hidden limit` : "")
 				.text(isRange ? `${cur.min}-${cur.max}` : !cur.isMinVal ? `≥ ${cur.min}` : !cur.isMaxVal ? `≤ ${cur.max}` : "")
 		};
-		this._addHook("meta", "isHidden", hook);
-		hook();
+		this._addHook("meta", "isHidden", hkIsHidden);
+		hkIsHidden();
 
 		return $$`
 		<div class="flex-v-center">
-			${$btnForceMobile}
 			${$wrpBtns}
 			${$wrpSummary}
 			${$btnShowHide}
@@ -1457,11 +2348,11 @@ class RangeFilter extends FilterBase {
 
 		const $wrpControls = opts.isMulti ? null : this._$getHeaderControls();
 
-		const $wrpSlider = $$`<div class="fltr__wrp-pills fltr__wrp-pills--flex"/>`;
-		const $wrpDropdowns = $$`<div class="fltr__wrp-pills fltr__wrp-pills--flex"/>`;
+		const $wrpSlider = $$`<div class="fltr__wrp-pills fltr__wrp-pills--flex"></div>`;
+		const $wrpDropdowns = $$`<div class="fltr__wrp-pills fltr__wrp-pills--flex"></div>`;
 		const hookHidden = () => {
-			$wrpSlider.toggle(!this._meta.isHidden && !this._meta.isUseDropdowns);
-			$wrpDropdowns.toggle(!this._meta.isHidden && !!this._meta.isUseDropdowns);
+			$wrpSlider.toggleVe(!this._meta.isHidden && !this._meta.isUseDropdowns);
+			$wrpDropdowns.toggleVe(!this._meta.isHidden && !!this._meta.isUseDropdowns);
 		};
 		this._addHook("meta", "isHidden", hookHidden);
 		this._addHook("meta", "isUseDropdowns", hookHidden);
@@ -1474,6 +2365,10 @@ class RangeFilter extends FilterBase {
 			if (this._labels) {
 				if (this._labelSortFn) sliderOpts.labels = this._labels.sort(this._labelSortFn);
 				else sliderOpts.labels = this._labels;
+
+				if (this._labelDisplayFn) sliderOpts.labels = sliderOpts.labels.map(it => this._labelDisplayFn(it));
+
+				this._labelSearchCache = this._labels.join(" -- ").toLowerCase();
 			} else if (this._isAllowGreater) {
 				sliderOpts.labels = {last: `${this._state.max}+`};
 			}
@@ -1482,17 +2377,17 @@ class RangeFilter extends FilterBase {
 		};
 		const sliderOpts = getSliderOpts();
 
-		this._$slider = $(`<div class="fltr__slider"/>`).appendTo($wrpSlider);
+		this._$slider = $(`<div class="fltr__slider"></div>`).appendTo($wrpSlider);
 		this._$slider
 			.slider({
 				min: this._min,
 				max: this._max,
 				range: true,
-				values: [this._min, this._max]
+				values: [this._min, this._max],
 			})
 			.slider("pips", sliderOpts)
 			.slider("float", sliderOpts)
-			.slider().on("slidestop", () => { // triggered when the user stops sliding
+			.on("slidestop", () => { // triggered when the user stops sliding
 				const [min, max] = this._$slider.slider("values");
 				this._state.curMin = min;
 				this._state.curMax = max;
@@ -1500,14 +2395,14 @@ class RangeFilter extends FilterBase {
 		// endregion
 
 		// region Dropdowns
-		const $selMin = $(`<select class="form-control mr-2"/>`)
+		const $selMin = $(`<select class="form-control mr-2"></select>`)
 			.change(() => {
 				const nxtMin = Number($selMin.val());
 				const [min, max] = [nxtMin, this._state.curMax].sort(SortUtil.ascSort);
 				this._state.curMin = min;
 				this._state.curMax = max;
 			});
-		const $selMax = $(`<select class="form-control"/>`)
+		const $selMax = $(`<select class="form-control"></select>`)
 			.change(() => {
 				const nxMax = Number($selMax.val());
 				const [min, max] = [this._state.curMin, nxMax].sort(SortUtil.ascSort);
@@ -1518,19 +2413,19 @@ class RangeFilter extends FilterBase {
 		// endregion
 
 		// region Mini pills
-		const $btnMiniGt = $(`<div class="fltr__mini-pill" state="ignore"/>`)
+		const $btnMiniGt = $(`<div class="fltr__mini-pill" state="ignore"></div>`)
 			.click(() => {
 				this._state.curMin = this._state.min;
 				this._filterBox.fireChangeEvent();
 			})
 			.appendTo(this.__$wrpMini);
-		const $btnMiniLt = $(`<div class="fltr__mini-pill" state="ignore"/>`)
+		const $btnMiniLt = $(`<div class="fltr__mini-pill" state="ignore"></div>`)
 			.click(() => {
 				this._state.curMax = this._state.max;
 				this._filterBox.fireChangeEvent();
 			})
 			.appendTo(this.__$wrpMini);
-		const $btnMiniEq = $(`<div class="fltr__mini-pill" state="ignore"/>`)
+		const $btnMiniEq = $(`<div class="fltr__mini-pill" state="ignore"></div>`)
 			.click(() => {
 				this._state.curMin = this._state.min;
 				this._state.curMax = this._state.max;
@@ -1541,9 +2436,9 @@ class RangeFilter extends FilterBase {
 
 		const hideHook = () => {
 			const isHidden = this._filterBox.isMinisHidden(this.header);
-			$btnMiniGt.toggleClass("hidden", isHidden);
-			$btnMiniLt.toggleClass("hidden", isHidden);
-			$btnMiniEq.toggleClass("hidden", isHidden);
+			$btnMiniGt.toggleClass("ve-hidden", isHidden);
+			$btnMiniLt.toggleClass("ve-hidden", isHidden);
+			$btnMiniEq.toggleClass("ve-hidden", isHidden);
 		};
 		this._filterBox.registerMinisHiddenHook(this.header, hideHook);
 		hideHook();
@@ -1557,12 +2452,12 @@ class RangeFilter extends FilterBase {
 			} else {
 				if (this._state.min !== this._state.curMin) {
 					$btnMiniGt.attr("state", FilterBox._PILL_STATES[1])
-						.text(`${this.header} ≥ ${this._labels ? this._labels[this._state.curMin] : this._state.curMin}`);
+						.text(`${this.header} ≥ ${this._labels ? this._labels[this._state.curMin] : this._state.curMin}${this._suffix || ""}`);
 				} else $btnMiniGt.attr("state", FilterBox._PILL_STATES[0]);
 
 				if (this._state.max !== this._state.curMax) {
 					$btnMiniLt.attr("state", FilterBox._PILL_STATES[1])
-						.text(`${this.header} ≤ ${this._labels ? this._labels[this._state.curMax] : this._state.curMax}`);
+						.text(`${this.header} ≤ ${this._labels ? this._labels[this._state.curMax] : this._state.curMax}${this._suffix || ""}`);
 				} else $btnMiniLt.attr("state", FilterBox._PILL_STATES[0]);
 
 				$btnMiniEq.attr("state", FilterBox._PILL_STATES[0]);
@@ -1616,22 +2511,25 @@ class RangeFilter extends FilterBase {
 		handleLimitUpdate();
 
 		if (opts.isMulti) {
-			this._$slider.addClass("grow");
-			$wrpSlider.addClass("grow");
-			$wrpDropdowns.addClass("grow");
-			return $$`<div class="flex">
-				<div class="fltr__range-inline-label">${this.header}</div>
-				${$wrpSlider} 
+			this._$slider.addClass("ve-grow");
+			$wrpSlider.addClass("ve-grow");
+			$wrpDropdowns.addClass("ve-grow");
+
+			return this.__$wrpFilter = $$`<div class="flex">
+				<div class="fltr__range-inline-label">${this._getRenderedHeader()}</div>
+				${$wrpSlider}
 				${$wrpDropdowns}
 			</div>`;
 		} else {
-			return $$`<div class="flex-col">
-				${opts.isFirst ? "" : `<div class="fltr__dropdown-divider mb-1"/>`}
+			const $btnMobToggleControls = this._$getBtnMobToggleControls($wrpControls);
+
+			return this.__$wrpFilter = $$`<div class="flex-col">
+				${opts.isFirst ? "" : `<div class="fltr__dropdown-divider mb-1"></div>`}
 				<div class="split fltr__h ${this._minimalUi ? "fltr__minimal-hide" : ""} mb-1">
-					<div>${this.header}</div>
+					<div class="fltr__h-text flex-h-center">${this._getRenderedHeader()}${$btnMobToggleControls}</div>
 					${$wrpControls}
 				</div>
-				${$wrpSlider} 
+				${$wrpSlider}
 				${$wrpDropdowns}
 			</div>`;
 		}
@@ -1642,7 +2540,7 @@ class RangeFilter extends FilterBase {
 			isMaxVal: this._state.max === this._state.curMax,
 			isMinVal: this._state.min === this._state.curMin,
 			max: this._state.curMax,
-			min: this._state.curMin
+			min: this._state.curMin,
 		};
 		out._isActive = !(out.isMinVal && out.isMaxVal);
 		return {[this.header]: out};
@@ -1677,11 +2575,17 @@ class RangeFilter extends FilterBase {
 				return slice.includes(entryVal);
 			}
 		} else {
-			const isGtMin = entryVal instanceof Array ? filterState.min <= Math.min(...entryVal) : filterState.min <= entryVal;
-			const isLtMax = entryVal instanceof Array ? filterState.max >= Math.max(...entryVal) : filterState.max >= entryVal;
-			if (this._isAllowGreater) return isGtMin && (isLtMax || filterState.max === this._state.max);
-			return isGtMin && isLtMax;
+			// If any of the item's values are in the range, return true
+			if (entryVal instanceof Array) return entryVal.some(ev => this._toDisplay_isToDisplayEntry(filterState, ev));
+			return this._toDisplay_isToDisplayEntry(filterState, entryVal);
 		}
+	}
+
+	_toDisplay_isToDisplayEntry (filterState, ev) {
+		const isGtMin = filterState.min <= ev;
+		const isLtMax = filterState.max >= ev;
+		if (this._isAllowGreater) return isGtMin && (isLtMax || filterState.max === this._state.max);
+		return isGtMin && isLtMax;
 	}
 
 	addItem (item) {
@@ -1692,6 +2596,8 @@ class RangeFilter extends FilterBase {
 				this._labels.push(item);
 				// Fake an update to trigger label handling
 			}
+
+			this._labelSearchCache = this._labels.join(" -- ").toLowerCase();
 
 			this._addItem_addNumber(this._labels.length - 1);
 		} else {
@@ -1715,26 +2621,307 @@ class RangeFilter extends FilterBase {
 		}
 	}
 
-	getDefaultMeta () { return {...RangeFilter._DEFAULT_META, ...super.getDefaultMeta()}; }
+	getDefaultMeta () {
+		const out = {...RangeFilter._DEFAULT_META, ...super.getDefaultMeta()};
+		if (Renderer.hover.isSmallScreen()) out.isUseDropdowns = true;
+		return out;
+	}
+
+	handleSearch (searchTerm) {
+		if (this.__$wrpFilter == null) return;
+
+		const isVisible = this.header.toLowerCase().includes(searchTerm)
+			|| (this._labelSearchCache != null
+				? this._labelSearchCache.includes(searchTerm)
+				: [...new Array(this._state.max - this._state.min)].map((_, n) => n + this._state.min).join(" -- ").includes(searchTerm));
+
+		this.__$wrpFilter.toggleClass("fltr__hidden--search", !isVisible);
+
+		return isVisible;
+	}
 }
 RangeFilter._DEFAULT_META = {
-	isUseDropdowns: false
+	isUseDropdowns: false,
 };
+
+class OptionsFilter extends FilterBase {
+	/**
+	 * A filter which has a selection of true/false options.
+	 * @param opts
+	 * @param opts.defaultState The default options.
+	 * @param opts.displayFn Display function which maps an option key to a user-friendly value.
+	 * @param [opts.displayFnMini] As per `displayFn`, but used for mini pills.
+	 */
+	constructor (opts) {
+		super(opts);
+		this._defaultState = opts.defaultState;
+		this._displayFn = opts.displayFn;
+		this._displayFnMini = opts.displayFnMini;
+
+		Object.assign(
+			this.__state,
+			MiscUtil.copy(opts.defaultState),
+		);
+
+		this._filterBox = null;
+		this.__$wrpMini = null;
+	}
+
+	getSaveableState () {
+		return {
+			[this.header]: {
+				...this.getBaseSaveableState(),
+				state: {...this.__state},
+			},
+		};
+	}
+
+	setStateFromLoaded (filterState) {
+		if (!filterState || !filterState[this.header]) return;
+
+		const toLoad = filterState[this.header];
+
+		this.setBaseStateFromLoaded(toLoad);
+
+		const toAssign = {};
+		Object.keys(this._defaultState).forEach(k => {
+			if (toLoad.state[k] == null) return;
+			if (typeof toLoad.state[k] !== typeof this._defaultState[k]) return; // Sanity check
+			toAssign[k] = toLoad.state[k];
+		});
+
+		Object.assign(this._state, toAssign);
+	}
+
+	getSubHashes () {
+		const out = [];
+
+		const baseMeta = this.getMetaSubHashes();
+		if (baseMeta) out.push(...baseMeta);
+
+		const serOptionState = [];
+		Object.entries(this._defaultState)
+			.forEach(([k, vDefault]) => {
+				if (this._state[k] !== vDefault) serOptionState.push(`${k.toLowerCase()}=${UrlUtil.mini.compress(this._state[k])}`);
+			});
+		if (serOptionState.length) {
+			out.push(UrlUtil.packSubHash(this.getSubHashPrefix("state", this.header), serOptionState));
+		}
+
+		return out.length ? out : null;
+	}
+
+	setFromSubHashState (state) {
+		this.setMetaFromSubHashState(state);
+
+		let hasState = false;
+
+		Object.entries(state).forEach(([k, vals]) => {
+			const prop = FilterBase.getProp(k);
+			if (prop !== "state") return;
+
+			hasState = true;
+			vals.forEach(v => {
+				const [prop, valCompressed] = v.split("=");
+				const val = UrlUtil.mini.decompress(valCompressed);
+
+				const casedProp = Object.keys(this._defaultState).find(k => k.toLowerCase() === prop);
+				if (!casedProp) return;
+
+				if (this._defaultState[casedProp] != null && typeof val === typeof this._defaultState[casedProp]) this._state[casedProp] = val;
+			});
+		});
+
+		if (!hasState) this.reset();
+	}
+
+	setFromValues (values) {
+		if (!values[this.header]) return;
+		const vals = values[this.header];
+		Object.entries(vals).forEach(([k, v]) => {
+			if (this._defaultState[k] && typeof this._defaultState[k] === typeof v) this._state[k] = v;
+		});
+	}
+
+	setValue (k, v) { this._state[k] = v; }
+
+	/**
+	 * @param opts Options.
+	 * @param opts.filterBox The FilterBox to which this filter is attached.
+	 * @param opts.isFirst True if this is visually the first filter in the box.
+	 * @param opts.$wrpMini The form mini-view element.
+	 * @param opts.isMulti The name of the MultiFilter this filter belongs to, if any.
+	 */
+	$render (opts) {
+		this._filterBox = opts.filterBox;
+		this.__$wrpMini = opts.$wrpMini;
+
+		const $wrpControls = opts.isMulti ? null : this._$getHeaderControls();
+
+		// region Render pills
+		const $btns = Object.keys(this._defaultState)
+			.map(k => this._$render_$getPill(k));
+		const $wrpButtons = $$`<div>${$btns}</div>`;
+		// endregion
+
+		// region Render mini pills
+		const $btnsMini = Object.keys(this._defaultState)
+			.map(k => this._$render_$getMiniPill(k));
+		$btnsMini.forEach($btn => $btn.appendTo(this.__$wrpMini));
+		// endregion
+
+		if (opts.isMulti) {
+			return this.__$wrpFilter = $$`<div class="flex">
+				<div class="fltr__range-inline-label">${this._getRenderedHeader()}</div>
+				${$wrpButtons}
+			</div>`;
+		} else {
+			return this.__$wrpFilter = $$`<div class="flex-col">
+				${opts.isFirst ? "" : `<div class="fltr__dropdown-divider mb-1"></div>`}
+				<div class="split fltr__h ${this._minimalUi ? "fltr__minimal-hide" : ""} mb-1">
+					<div class="fltr__h-text flex-h-center">${this._getRenderedHeader()}</div>
+					${$wrpControls}
+				</div>
+				${$wrpButtons}
+			</div>`;
+		}
+	}
+
+	_$render_$getPill (key) {
+		const displayText = this._displayFn(key);
+
+		const $btnPill = $(`<div class="fltr__pill">${displayText}</div>`)
+			.click(() => {
+				this._state[key] = !this._state[key];
+			})
+			.contextmenu((evt) => {
+				evt.preventDefault();
+				this._state[key] = !this._state[key];
+			});
+		const hook = () => {
+			const val = FilterBox._PILL_STATES[this._state[key] ? 1 : 2];
+			$btnPill.attr("state", val);
+		};
+		this._addHook("state", key, hook);
+		hook();
+
+		return $btnPill;
+	}
+
+	_$render_$getMiniPill (key) {
+		const displayTextFull = this._displayFnMini ? this._displayFn(key) : null;
+		const displayText = this._displayFnMini ? this._displayFnMini(key) : this._displayFn(key);
+
+		const $btnMini = $(`<div class="fltr__mini-pill ${this._filterBox.isMinisHidden(this.header) ? "ve-hidden" : ""}" state="${FilterBox._PILL_STATES[this._defaultState[key] === this._state[key] ? 0 : this._state[key] ? 1 : 2]}">${displayText}</div>`)
+			.title(`${displayTextFull ? `${displayTextFull} (` : ""}Filter: ${this.header}${displayTextFull ? ")" : ""}`)
+			.click(() => {
+				this._state[key] = this._defaultState[key];
+				this._filterBox.fireChangeEvent();
+			});
+
+		const hook = () => $btnMini.attr("state", FilterBox._PILL_STATES[this._defaultState[key] === this._state[key] ? 0 : this._state[key] ? 1 : 2]);
+		this._addHook("state", key, hook);
+
+		const hideHook = () => $btnMini.toggleClass("ve-hidden", this._filterBox.isMinisHidden(this.header));
+		this._filterBox.registerMinisHiddenHook(this.header, hideHook);
+
+		return $btnMini;
+	}
+
+	_$getHeaderControls () {
+		const $btnReset = $(`<button class="btn btn-default btn-xs">Reset</button>`).click(() => this.reset());
+		const $wrpBtns = $$`<div class="flex-v-center">${$btnReset}</div>`;
+
+		const $wrpSummary = $(`<div class="flex-v-center fltr__summary_item fltr__summary_item--include"></div>`).hideVe();
+
+		const $btnShowHide = $(`<button class="btn btn-default btn-xs ml-2 ${this._meta.isHidden ? "active" : ""}">Hide</button>`)
+			.click(() => this._meta.isHidden = !this._meta.isHidden);
+		const hkIsHidden = () => {
+			$btnShowHide.toggleClass("active", this._meta.isHidden);
+			$wrpBtns.toggleVe(!this._meta.isHidden);
+			$wrpSummary.toggleVe(this._meta.isHidden);
+
+			// render summary
+			const cntNonDefault = Object.entries(this._defaultState).filter(([k, v]) => this._state[k] != null && this._state[k] !== v).length;
+
+			$wrpSummary
+				.title(`${cntNonDefault} non-default option${cntNonDefault === 1 ? "" : "s"} selected`)
+				.text(cntNonDefault)
+		};
+		this._addHook("meta", "isHidden", hkIsHidden);
+		hkIsHidden();
+
+		return $$`
+		<div class="flex-v-center">
+			${$wrpBtns}
+			${$wrpSummary}
+			${$btnShowHide}
+		</div>`;
+	}
+
+	getValues () {
+		const out = Object.entries(this._defaultState)
+			.mergeMap(([k, v]) => ({[k]: this._state[k] == null ? v : this._state[k]}));
+		out._isActive = Object.entries(this._defaultState).some(([k, v]) => this._state[k] != null && this._state[k] !== v);
+		return {
+			[this.header]: out,
+		};
+	}
+
+	reset (isResetAll) {
+		if (isResetAll) this.resetBase();
+		this._proxyAssignSimple("state", MiscUtil.copy(this._defaultState));
+	}
+
+	resetShallow (isResetAll) { return this.reset(); }
+
+	update () { /* No-op */ }
+
+	toDisplay (boxState, entryVal) {
+		const filterState = boxState[this.header];
+		if (!filterState) return true; // discount any filters which were not rendered
+
+		if (entryVal == null) return true; // Never filter if a null object, i.e. "no data," is passed in
+
+		// If an object has a relevant value, display if the incoming value matches our state.
+		return Object.entries(entryVal)
+			.every(([k, v]) => this._state[k] === v);
+	}
+
+	getDefaultMeta () {
+		return {...OptionsFilter._DEFAULT_META, ...super.getDefaultMeta()}
+	}
+
+	handleSearch (searchTerm) {
+		if (this.__$wrpFilter == null) return;
+
+		const isVisible = this.header.toLowerCase().includes(searchTerm)
+			|| Object.keys(this._defaultState).map(it => this._displayFn(it).toLowerCase()).some(it => it.includes(searchTerm));
+
+		this.__$wrpFilter.toggleClass("fltr__hidden--search", !isVisible);
+
+		return isVisible;
+	}
+}
+OptionsFilter._DEFAULT_META = {};
 
 class MultiFilter extends FilterBase {
 	constructor (opts) {
 		super(opts);
 		this._filters = opts.filters;
+		this._isAddDropdownToggle = !!opts.isAddDropdownToggle;
 
 		Object.assign(
 			this.__state,
 			{
 				...MultiFilter._DETAULT_STATE,
-				mode: opts.mode || MultiFilter._DETAULT_STATE.mode
-			}
+				mode: opts.mode || MultiFilter._DETAULT_STATE.mode,
+			},
 		);
-		this._baseState = MiscUtil.copy(this.__state);
+		this._defaultState = MiscUtil.copy(this.__state);
 		this._state = this._getProxy("state", this.__state);
+
+		this.__$wrpFilter = null;
 	}
 
 	getChildFilters () {
@@ -1745,8 +2932,8 @@ class MultiFilter extends FilterBase {
 		const out = {
 			[this.header]: {
 				...this.getBaseSaveableState(),
-				state: {...this.__state}
-			}
+				state: {...this.__state},
+			},
 		};
 		this._filters.forEach(it => Object.assign(out, it.getSaveableState()));
 		return out;
@@ -1767,10 +2954,10 @@ class MultiFilter extends FilterBase {
 		const baseMeta = this.getMetaSubHashes();
 		if (baseMeta) out.push(...baseMeta);
 
-		const anyNotDefault = Object.keys(MultiFilter._DETAULT_STATE).find(k => this._state[k] !== MultiFilter._DETAULT_STATE[k]);
+		const anyNotDefault = Object.keys(this._defaultState).find(k => this._state[k] !== this._defaultState[k]);
 		if (anyNotDefault) {
-			const serState = Object.keys(MultiFilter._DETAULT_STATE).map(k => FilterUtil.compress(this._state[k]));
-			out.push(UrlUtil.packSubHash(FilterBase.getSubHashPrefix("state", this.header), serState));
+			const serState = Object.keys(this._defaultState).map(k => UrlUtil.mini.compress(this._state[k] === undefined ? this._defaultState[k] : this._state[k]));
+			out.push(UrlUtil.packSubHash(this.getSubHashPrefix("state", this.header), serState));
 		}
 
 		// each getSubHashes should return an array of arrays, or null
@@ -1788,8 +2975,8 @@ class MultiFilter extends FilterBase {
 			const prop = FilterBase.getProp(k);
 			if (prop === "state") {
 				hasState = true;
-				const data = vals.map(v => FilterUtil.decompress(v));
-				Object.keys(MultiFilter._DETAULT_STATE).forEach((k, i) => this._state[k] = data[i]);
+				const data = vals.map(v => UrlUtil.mini.decompress(v));
+				Object.keys(this._defaultState).forEach((k, i) => this._state[k] = data[i]);
 			}
 		});
 
@@ -1801,7 +2988,7 @@ class MultiFilter extends FilterBase {
 	}
 
 	$render (opts) {
-		const $btnAndOr = $(`<div class="fltr__group-comb-toggle text-muted"/>`)
+		const $btnAndOr = $(`<div class="fltr__group-comb-toggle ve-muted"></div>`)
 			.click(() => this._state.mode = this._state.mode === "and" ? "or" : "and");
 		const hookAndOr = () => $btnAndOr.text(`(group ${this._state.mode.toUpperCase()})`);
 		this._addHook("state", "mode", hookAndOr);
@@ -1810,42 +2997,71 @@ class MultiFilter extends FilterBase {
 		const $children = this._filters.map((it, i) => it.$render({...opts, isMulti: true, isFirst: i === 0}));
 		const $wrpChildren = $$`<div>${$children}</div>`;
 
-		const $wrpSummary = $(`<div class="fltr__summary_item"/>`).hide();
+		const $wrpSummary = $(`<div class="fltr__summary_item"></div>`).hideVe();
+
+		const $btnForceMobile = this._isAddDropdownToggle ? ComponentUiUtil.$getBtnBool(
+			this,
+			"isUseDropdowns",
+			{
+				$ele: $(`<button class="btn btn-default btn-xs ml-2">Show as Dropdowns</button>`),
+				stateName: "meta",
+				stateProp: "_meta",
+			},
+		) : null;
+		// Propagate parent state to children
+		const hkChildrenDropdowns = () => {
+			this._filters
+				.filter(it => it instanceof RangeFilter)
+				.forEach(it => it.isUseDropdowns = this._meta.isUseDropdowns);
+		};
+		this._addHook("meta", "isUseDropdowns", hkChildrenDropdowns);
+		hkChildrenDropdowns();
 
 		const $btnResetAll = $(`<button class="btn btn-default btn-xs ml-2">Reset All</button>`)
 			.click(() => this._filters.forEach(it => it.reset()));
+		const $wrpBtns = $$`<div>${$btnForceMobile}${$btnResetAll}</div>`;
+
 		const $btnShowHide = $(`<button class="btn btn-default btn-xs ml-2 ${this._meta.isHidden ? "active" : ""}">Hide</button>`)
 			.click(() => this._meta.isHidden = !this._meta.isHidden);
 		const $wrpControls = $$`<div class="flex-v-center">
-			${$wrpSummary}${$btnResetAll}${$btnShowHide}
+			${$wrpSummary}${$wrpBtns}${$btnShowHide}
 		</div>`;
 
 		const hookShowHide = () => {
+			$wrpBtns.toggleVe(!this._meta.isHidden);
 			$btnShowHide.toggleClass("active", this._meta.isHidden);
-			$wrpChildren.toggle(!this._meta.isHidden);
-			$wrpSummary.toggle(this._meta.isHidden);
+			$wrpChildren.toggleVe(!this._meta.isHidden);
+			$wrpSummary.toggleVe(this._meta.isHidden);
 
 			const numActive = this._filters.map(it => it.getValues()[it.header]._isActive).filter(Boolean).length;
 			if (numActive) {
 				$wrpSummary
-					.attr("title", `${numActive} hidden active filter${numActive === 1 ? "" : "s"}`)
+					.title(`${numActive} hidden active filter${numActive === 1 ? "" : "s"}`)
 					.text(`(${numActive})`);
 			}
 		};
 		this._addHook("meta", "isHidden", hookShowHide);
 		hookShowHide();
 
-		return $$`<div class="flex-col">
-			${opts.isFirst ? "" : `<div class="fltr__dropdown-divider mb-1"/>`}
-			<div class="split fltr__h ${this._minimalUi ? "fltr__minimal-hide" : ""} mb-1">
+		return this.__$wrpFilter = $$`<div class="flex-col">
+			${opts.isFirst ? "" : `<div class="fltr__dropdown-divider mb-1"></div>`}
+			<div class="split fltr__h fltr__h--multi ${this._minimalUi ? "fltr__minimal-hide" : ""} mb-1">
 				<div class="flex-v-center">
-					<div class="mr-2">${this.header}</div>
+					<div class="mr-2">${this._getRenderedHeader()}</div>
 					${$btnAndOr}
 				</div>
 				${$wrpControls}
 			</div>
 			${$wrpChildren}
 		</div>`;
+	}
+
+	/**
+	 * @param vals Previously-read filter value may be passed in for performance.
+	 */
+	isActive (vals) {
+		vals = vals || this.getValues();
+		return this._filters.some(it => it.isActive(vals));
 	}
 
 	getValues () {
@@ -1855,7 +3071,7 @@ class MultiFilter extends FilterBase {
 	}
 
 	_reset () {
-		Object.assign(this._state, this._baseState);
+		Object.assign(this._state, this._defaultState);
 	}
 
 	reset (isResetAll) {
@@ -1899,9 +3115,24 @@ class MultiFilter extends FilterBase {
 	}
 
 	addItem () { throw new Error(`Cannot add item to MultiFilter! Add the item to a child filter instead.`); }
+
+	handleSearch (searchTerm) {
+		const isHeaderMatch = this.header.toLowerCase().includes(searchTerm);
+
+		if (isHeaderMatch) {
+			if (this.__$wrpFilter) this.__$wrpFilter.toggleClass("fltr__hidden--search", false);
+			// Force-display the children if the parent is visible
+			this._filters.forEach(it => it.handleSearch(""));
+			return true;
+		}
+
+		const numVisible = this._filters.map(it => it.handleSearch(searchTerm)).reduce((a, b) => a + b, 0);
+		if (!this.__$wrpFilter) return;
+		this.__$wrpFilter.toggleClass("fltr__hidden--search", numVisible === 0);
+	}
 }
 MultiFilter._DETAULT_STATE = {
-	mode: "or"
+	mode: "and",
 };
 
 // validate subhash prefixes
@@ -1912,3 +3143,17 @@ MultiFilter._DETAULT_STATE = {
 	if (allPrefixes.length) throw new Error(`Invalid prefixes! ${allPrefixes.map(it => `"${it}"`).join(", ")} ${allPrefixes.length === 1 ? `is` : `was`} not of length ${FilterUtil.SUB_HASH_PREFIX_LENGTH}`);
 })();
 FilterUtil.SUB_HASH_PREFIXES = new Set([...Object.values(FilterBox._SUB_HASH_PREFIXES), ...Object.values(FilterBase._SUB_HASH_PREFIXES)]);
+
+if (typeof module !== "undefined") {
+	module.exports = {
+		FilterUtil,
+		PageFilter,
+		FilterBox,
+		FilterItem,
+		FilterBase,
+		Filter,
+		SourceFilter,
+		RangeFilter,
+		MultiFilter,
+	};
+}

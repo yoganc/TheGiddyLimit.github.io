@@ -2,47 +2,34 @@
 
 class ConditionsDiseasesPage extends ListPage {
 	constructor () {
-		const sourceFilter = getSourceFilter();
-		const typeFilter = new Filter({
-			header: "Type",
-			items: ["condition", "disease"],
-			displayFn: StrUtil.uppercaseFirst,
-			deselFn: (it) => it === "disease"
-		});
+		const pageFilter = new PageFilterConditionsDiseases();
 
 		super({
 			dataSource: "data/conditionsdiseases.json",
 
-			filters: [
-				sourceFilter,
-				typeFilter
-			],
-			filterSource: sourceFilter,
+			pageFilter,
 
 			listClass: "conditions",
 
 			sublistClass: "subconditions",
 
-			dataProps: ["condition", "disease"]
+			dataProps: ["condition", "disease", "status"],
 		});
-
-		this._sourceFilter = sourceFilter;
 	}
 
-	getListItem (it, cdI) {
-		// populate filters
-		this._sourceFilter.addItem(it.source);
+	getListItem (it, cdI, isExcluded) {
+		this._pageFilter.mutateAndAddToFilters(it, isExcluded);
 
 		const eleLi = document.createElement("li");
-		eleLi.className = "row";
+		eleLi.className = `row ${isExcluded ? "row--blacklisted" : ""}`;
 
 		const source = Parser.sourceJsonToAbv(it.source);
 		const hash = UrlUtil.autoEncodeHash(it);
 
-		eleLi.innerHTML = `<a href="#${hash}">
-			<span class="col-3 text-center pl-0">${StrUtil.uppercaseFirst(it.__prop)}</span>
+		eleLi.innerHTML = `<a href="#${hash}" class="lst--border">
+			<span class="col-3 text-center pl-0">${PageFilterConditionsDiseases.getDisplayProp(it.__prop)}</span>
 			<span class="bold col-7">${it.name}</span>
-			<span class="source col-2 text-center ${Parser.sourceJsonToColor(it.source)} pr-0" title="${Parser.sourceJsonToFull(it.source)}" ${BrewUtil.sourceJsonToStyle(it.source)}>${source}</span>
+			<span class="col-2 text-center ${Parser.sourceJsonToColor(it.source)} pr-0" title="${Parser.sourceJsonToFull(it.source)}" ${BrewUtil.sourceJsonToStyle(it.source)}>${source}</span>
 		</a>`;
 
 		const listItem = new ListItem(
@@ -53,8 +40,11 @@ class ConditionsDiseasesPage extends ListPage {
 				hash,
 				source,
 				type: it.__prop,
-				uniqueid: it.uniqueId ? it.uniqueId : cdI
-			}
+			},
+			{
+				uniqueId: it.uniqueId ? it.uniqueId : cdI,
+				isExcluded,
+			},
 		);
 
 		eleLi.addEventListener("click", (evt) => this._list.doSelect(listItem, evt));
@@ -65,14 +55,7 @@ class ConditionsDiseasesPage extends ListPage {
 
 	handleFilterChange () {
 		const f = this._filterBox.getValues();
-		this._list.filter(li => {
-			const it = this._dataList[li.ix];
-			return this._filterBox.toDisplay(
-				f,
-				it.source,
-				it.__prop
-			);
-		});
+		this._list.filter(item => this._pageFilter.toDisplay(f, this._dataList[item.ix]));
 		FilterBox.selectFirstVisible(this._dataList);
 	}
 
@@ -80,8 +63,9 @@ class ConditionsDiseasesPage extends ListPage {
 		const hash = UrlUtil.autoEncodeHash(it);
 
 		const $ele = $(`<li class="row">
-			<a href="#${hash}">
-				<span class="bold col-12 px-0">${it.name}</span>
+			<a href="#${hash}" class="lst--border">
+				<span class="col-2 pl-0 text-center">${PageFilterConditionsDiseases.getDisplayProp(it.__prop)}</span>
+				<span class="bold col-10 pr-0">${it.name}</span>
 			</a>
 		</li>`)
 			.contextmenu(evt => ListUtil.openSubContextMenu(evt, listItem));
@@ -91,8 +75,9 @@ class ConditionsDiseasesPage extends ListPage {
 			$ele,
 			it.name,
 			{
-				hash
-			}
+				hash,
+				type: it.__prop,
+			},
 		);
 		return listItem;
 	}
@@ -106,25 +91,23 @@ class ConditionsDiseasesPage extends ListPage {
 		}
 
 		function buildFluffTab (isImageTab) {
-			return Renderer.utils.pBuildFluffTab(
+			return Renderer.utils.pBuildFluffTab({
 				isImageTab,
 				$content,
-				it,
-				(fluffJson) => it.fluff || fluffJson.condition.find(cd => it.name === cd.name && it.source === cd.source),
-				`data/fluff-conditionsdiseases.json`,
-				() => true
-			);
+				entity: it,
+				pFnGetFluff: Renderer.condition.pGetFluff,
+			});
 		}
 
 		const statTab = Renderer.utils.tabButton(
 			"Traits",
 			() => {},
-			buildStatsTab
+			buildStatsTab,
 		);
 		const picTab = Renderer.utils.tabButton(
 			"Images",
 			() => {},
-			buildFluffTab.bind(null, true)
+			buildFluffTab.bind(null, true),
 		);
 
 		Renderer.utils.bindTabButtons(statTab, picTab);
@@ -132,9 +115,9 @@ class ConditionsDiseasesPage extends ListPage {
 		ListUtil.updateSelected();
 	}
 
-	doLoadSubHash (sub) {
+	async pDoLoadSubHash (sub) {
 		sub = this._filterBox.setFromSubHashes(sub);
-		ListUtil.setFromSubHashes(sub);
+		await ListUtil.pSetFromSubHashes(sub);
 	}
 }
 

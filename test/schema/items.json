@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"version": "1.5.2",
+	"version": "1.8.2",
 	"type": "object",
 	"definitions": {
 		"itemData": {
@@ -16,16 +16,16 @@
 					"type": "string",
 					"description": "\"None\" is for mundane items. \"Unknown (Magic)\" is for miscellaneous magical items. \"Unknown\" is for miscellaneous mundane items. \"Varies\" is for item groups.",
 					"enum": [
-						"Rare",
-						"None",
-						"Uncommon",
-						"Very Rare",
-						"Legendary",
-						"Artifact",
-						"Unknown",
-						"Common",
-						"Unknown (Magic)",
-						"Varies"
+						"rare",
+						"none",
+						"uncommon",
+						"very rare",
+						"legendary",
+						"artifact",
+						"unknown",
+						"common",
+						"unknown (magic)",
+						"varies"
 					]
 				},
 				"source": {
@@ -42,6 +42,10 @@
 				},
 				"ac": {
 					"type": "integer"
+				},
+				"acSpecial": {
+					"description": "Free text field for homebrew use.",
+					"type": "string"
 				},
 				"age": {
 					"type": "string"
@@ -99,10 +103,24 @@
 						}
 					]
 				},
+				"reqAttuneAlt": {
+					"description": "Used for filtering.",
+					"oneOf": [
+						{
+							"type": "string"
+						},
+						{
+							"type": "boolean"
+						}
+					]
+				},
 				"curse": {
 					"type": "boolean"
 				},
 				"resist": {
+					"type": "string"
+				},
+				"color": {
 					"type": "string"
 				},
 				"scfType": {
@@ -124,6 +142,7 @@
 					"type": "boolean"
 				},
 				"staff": {
+					"description": "Adds the italicized \"Staff\" text to the item info line (below the name).",
 					"type": "boolean"
 				},
 				"tier": {
@@ -133,7 +152,7 @@
 					"description": "In copper pieces.",
 					"type": "number"
 				},
-				"valueConversion": {
+				"currencyConversion": {
 					"description": "ID of a value conversion table. Homebrew only.",
 					"type": "string"
 				},
@@ -158,13 +177,31 @@
 				"wondrous": {
 					"type": "boolean"
 				},
+				"tattoo": {
+					"type": "boolean"
+				},
 				"sentient": {
 					"type": "boolean"
 				},
 				"poison": {
 					"type": "boolean"
 				},
+				"poisonTypes": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"enum": ["ingested", "injury", "inhaled", "contact"]
+					}
+				},
 				"crew": {
+					"type": "integer"
+				},
+				"crewMin": {
+					"description": "For crews specified as an X-Y min-max.",
+					"type": "integer"
+				},
+				"crewMax": {
+					"description": "For crews specified as an X-Y min-max.",
 					"type": "integer"
 				},
 				"capPassenger": {
@@ -183,6 +220,14 @@
 					"type": "integer"
 				},
 				"vehDmgThresh": {
+					"type": "integer"
+				},
+				"travelCost": {
+					"description": "In copper pieces per mile per passenger.",
+					"type": "integer"
+				},
+				"shippingCost": {
+					"description": "In copper pieces per 100 lbs per mile.",
 					"type": "integer"
 				},
 				"charges": {
@@ -244,12 +289,46 @@
 							"type": "array",
 							"items": {
 								"type": "string",
-								"enum": ["Bard", "Cleric", "Druid", "Paladin", "Sorcerer", "Warlock", "Wizard"]
+								"enum": ["Bard", "Cleric", "Druid", "Paladin", "Ranger", "Sorcerer", "Warlock", "Wizard"]
 							}
 						}
 					]
 				},
 				"lootTables": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					}
+				},
+				"alCertificateId": {
+					"description": "Adventurers League item certificate ID; for use in homebrew.",
+					"type": "string"
+				},
+				"bonusAc": {
+					"type": "string"
+				},
+				"bonusWeapon": {
+					"type": "string"
+				},
+				"bonusWeaponAttack": {
+					"type": "string"
+				},
+				"bonusWeaponDamage": {
+					"type": "string"
+				},
+				"bonusSpellAttack": {
+					"type": "string"
+				},
+				"bonusSavingThrow": {
+					"type": "string"
+				},
+				"otherSources": {
+					"$ref": "util.json#/definitions/otherSources"
+				},
+				"srd": {
+					"$ref": "util.json#/definitions/srd"
+				},
+				"packContents": {
 					"type": "array",
 					"items": {
 						"oneOf": [
@@ -258,26 +337,66 @@
 							},
 							{
 								"type": "object",
-								"name": {
-									"type": "string"
+								"properties": {
+									"special": {
+										"type": "string"
+									},
+									"quantity": {
+										"type": "integer"
+									}
 								},
-								"source": {
-									"type": "string"
-								}
+								"additionalProperties": false,
+								"required": ["special"]
+							},
+							{
+								"type": "object",
+								"properties": {
+									"item": {
+										"type": "string"
+									},
+									"quantity": {
+										"type": "integer"
+									}
+								},
+								"additionalProperties": false,
+								"required": ["item", "quantity"]
 							}
 						]
 					}
 				},
-				"alCertificateId": {
-					"description": "Adventurers League item certificate ID; for use in homebrew.",
+				"containerCapacity": {
+					"type": "object",
+					"properties": {
+						"weight": {
+							"type": "array",
+							"items": {
+								"type": "integer"
+							}
+						},
+						"item": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"patternProperties": {
+									".*": {
+										"type": "integer"
+									}
+								},
+								"additionalProperties": false
+							}
+						},
+						"weightless": {
+							"description": "If the container renders its contents weightless.",
+							"type": "boolean"
+						}
+					},
+					"additionalProperties": false
+				},
+				"ammoType": {
 					"type": "string"
 				},
-				"bonus": {
-					"description": "Used externally, in VTT modules.",
-					"type": "string"
-				},
-				"otherSources": {
-					"$ref": "util.json#/definitions/otherSources"
+				"grantsProficiency": {
+					"type": "boolean"
 				}
 			},
 			"additionalProperties": false

@@ -9,17 +9,45 @@
 	<meta name="description" content="">
 	<meta http-equiv="X-UA-Compatible" content="IE=edge">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="apple-mobile-web-app-capable" content="yes">
 
 	<title>DM Screen - 5etools</title>
-
-	<link rel="manifest" href="manifest.webmanifest">
 
 	<link rel="stylesheet" href="css/bootstrap.css">
 	<link rel="stylesheet" href="css/fontawesome.css">
 	<link rel="stylesheet" href="css/jquery-ui.css">
 	<link rel="stylesheet" href="css/jquery-ui-slider-pips.css">
 	<link rel="stylesheet" href="css/style.css">
-	<link rel="icon" href="favicon.png">
+
+	<!-- Favicons -->
+	<link rel="icon" type="image/svg+xml" href="favicon.svg?v=1.115">
+	<link rel="icon" type="image/png" sizes="256x256" href="favicon-256x256.png">
+	<link rel="icon" type="image/png" sizes="144x144" href="favicon-144x144.png">
+	<link rel="icon" type="image/png" sizes="128x128" href="favicon-128x128.png">
+	<link rel="icon" type="image/png" sizes="64x64" href="favicon-64x64.png">
+	<link rel="icon" type="image/png" sizes="48x48" href="favicon-48x48.png">
+	<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+
+	<!-- Chrome Web App Icons -->
+	<link rel="manifest" href="manifest.webmanifest">
+	<meta name="application-name" content="5eTools">
+	<meta name="theme-color" content="#006bc4">
+
+	<!-- Windows Start Menu tiles -->
+	<meta name="msapplication-config" content="browserconfig.xml"/>
+	<meta name="msapplication-TileColor" content="#006bc4">
+
+	<!-- Apple Touch Icons -->
+	<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180x180.png">
+	<link rel="apple-touch-icon" sizes="360x360" href="apple-touch-icon-360x360.png">
+	<link rel="apple-touch-icon" sizes="167x167" href="apple-touch-icon-167x167.png">
+	<link rel="apple-touch-icon" sizes="152x152" href="apple-touch-icon-152x152.png">
+	<link rel="apple-touch-icon" sizes="120x120" href="apple-touch-icon-120x120.png">
+	<meta name="apple-mobile-web-app-title" content="5eTools">
+
+	<!-- macOS Safari Pinned Tab and Touch Bar -->
+	<link rel="mask-icon" href="safari-pinned-tab.svg" color="#006bc4">
 
 	<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js");</script>
 
@@ -38,10 +66,6 @@
 		label {
 			margin-bottom: 0;
 			font-weight: initial;
-		}
-
-		input[type=checkbox] {
-			margin: 0;
 		}
 
 		.dm-screen {
@@ -207,6 +231,10 @@
 			background: white;
 		}
 
+		.night-mode .content-tab-bar {
+			border-color: #555;
+		}
+
 		.content-tab-bar-inner {
 			display: flex;
 			overflow: hidden;
@@ -223,8 +251,6 @@
 
 		.content-tab-title {
 			max-width: 80px;
-			overflow: hidden;
-			text-overflow: ellipsis;
 			display: block;
 		}
 
@@ -343,9 +369,8 @@
 		.panel-addmenu-tab-head {
 			border-bottom-right-radius: 0;
 			border-bottom-left-radius: 0;
-			padding: 5px;
+			padding: 4px 5px;
 			cursor: pointer;
-			margin-top: -3px;
 		}
 
 		.panel-addmenu-view {
@@ -373,7 +398,7 @@
 			margin-bottom: 5px;
 		}
 
-		.panel-content-wrapper-inner th.name {
+		.panel-content-wrapper-inner .rnd-name {
 			font-size: 1.6em;
 		}
 
@@ -580,6 +605,10 @@
 			min-width: min-content;
 		}
 
+		.night-mode .dm-init-wrp-header {
+			border-color: #555;
+		}
+
 		.dm-init-header {
 			padding: 5px 0;
 			width: 100%;
@@ -646,6 +675,10 @@
 			border: 1px solid #ccc;
 		}
 
+		.night-mode .init-wrp-creature {
+			border-color: #555;
+		}
+
 		.dm-init-row .init-wrp-creature .btn {
 			margin-right: 3px;
 			padding: 0 1px;
@@ -687,6 +720,10 @@
 			border-top: 1px solid #ccc;
 			justify-content: space-evenly;
 			display: flex;
+		}
+
+		.night-mode .dm-init-wrp-controls {
+			border-color: #555;
 		}
 
 		.dm_init__rounds {
@@ -847,6 +884,10 @@
 			flex-shrink: 0;
 		}
 
+		.night-mode .dm_money__ctrl {
+			border-color: #555;
+		}
+
 		.dm_money__ctrl__lhs {
 			display: flex;
 			flex-direction: column;
@@ -925,6 +966,7 @@
 		.dm-book__wrp-content {
 			overflow-y: auto;
 			overflow-x: hidden;
+			transform: translateZ(0);
 		}
 
 		.dm-book__wrp-controls {
@@ -933,12 +975,13 @@
 			justify-content: flex-end;
 		}
 
+		.night-mode .dm-book__wrp-controls {
+			border-color: #555;
+		}
+
 		.dm-book__controls-title {
 			height: 20px;
 			padding: 0 3px;
-			overflow: hidden;
-			text-overflow: ellipsis;
-			white-space: nowrap;
 			width: 50%;
 			flex-grow: 0;
 		}
@@ -976,7 +1019,11 @@
 			height: calc(100% - 8px);
 			margin: 4px 8px;
 			flex-shrink: 0;
-			border-left: 1px solid #eee;
+			border-left: 1px solid #ccc;
+		}
+
+		.night-mode .dm-time__bar-clock {
+			border-color: #555;
 		}
 
 		.dm-time__btn-day {
@@ -1022,6 +1069,10 @@
 			line-height: 1.5;
 			min-height: 21px;
 			user-select: none;
+		}
+
+		.night-mode .dm-time__disp-calendar-day {
+			border-color: #555;
 		}
 
 		.dm-time__disp-calendar-day--active {
@@ -1127,9 +1178,17 @@
 			width: calc(100% - 6px);
 		}
 
+		.night-mode .dm-time__wrp-event-entries {
+			border-color: #555;
+		}
+
 		.dm-time__bar-entry {
 			margin: 0 4px;
 			border-left: 1px solid #ccc;
+		}
+
+		.night-mode .dm-time__bar-entry {
+			border-color: #555;
 		}
 
 		.dm-time__wind-speed {
@@ -1155,7 +1214,7 @@
 		}
 
 		.night-mode .dm-time__cvs-moon {
-			border: 1px solid #ccc;
+			border: 1px solid #555;
 		}
 
 		.dm-time__clock-moon-phase {
@@ -1232,6 +1291,59 @@
 			user-select: none;
 		}
 		/* endregion */
+
+		/* region Map viewer */
+		.dm-map__picker-wrp-img {
+			display: inline-block;
+			width: 320px;
+			height: 340px;
+			line-height: 320px;
+			text-align: center;
+			font-size: 0;
+			border: 2px solid #ccc;
+		}
+
+		.dm-map__picker-img {
+			width: auto;
+			height: 320px;
+			vertical-align: middle;
+			background-size: contain;
+			background-position: center;
+			background-repeat: no-repeat;
+		}
+
+		.dm-map__picker-disp-name {
+			right: 14px;
+			bottom: 0;
+			left: 14px;
+			top: calc(100% - 20px);
+			line-height: 20px;
+			font-size: 14px;
+			background: white;
+			border-top: 1px solid #ccc;
+			border-right: 1px solid #ccc;
+			border-left: 1px solid #ccc;
+			border-top-left-radius: 5px;
+			border-top-right-radius: 5px;
+		}
+
+		.night-mode .dm-map__picker-wrp-img {
+			border-color: #555;
+		}
+
+		.night-mode .dm-map__picker-disp-name {
+			background: #222;
+			border-color: #555;
+		}
+		/* endregion */
+
+		.dm-blank__panel {
+			background: white;
+		}
+
+		.night-mode .dm-blank__panel {
+			background: #222;
+		}
 	</style>
 </head>
 
@@ -1260,12 +1372,13 @@
 </div>
 
 <!--5ETOOLS_SCRIPT_ANCHOR-->
-
+<script type="text/javascript" src="lib/peerjs.js"></script>
 <script type="text/javascript" src="lib/jquery.js"></script>
 <script type="text/javascript" src="lib/jquery.panzoom.js"></script>
 <script type="text/javascript" src="lib/jquery-ui.js"></script>
 <script type="text/javascript" src="lib/jquery-ui-slider-pip.js"></script>
 <script type="text/javascript" src="lib/lzma.js"></script>
+<script type="text/javascript" src="js/parser.js"></script>
 <script type="text/javascript" src="js/utils.js"></script>
 <script type="text/javascript" src="js/utils-ui.js"></script>
 <script type="text/javascript" src="js/utils-p2p.js"></script>
@@ -1273,6 +1386,8 @@
 <script type="text/javascript" src="js/omnidexer.js"></script>
 <script type="text/javascript" src="js/omnisearch.js"></script>
 <script type="text/javascript" src="js/render.js"></script>
+<script type="text/javascript" src="js/render-dice.js"></script>
+<script type="text/javascript" src="js/render-map.js"></script>
 <script type="text/javascript" src="js/scalecreature.js"></script>
 <script type="text/javascript" src="js/initiativetrackerutils.js"></script>
 <script type="text/javascript" src="js/dmscreen.js"></script>
@@ -1281,6 +1396,7 @@
 <script type="text/javascript" src="js/dmscreen-moneyconverter.js"></script>
 <script type="text/javascript" src="js/dmscreen-timetracker.js"></script>
 <script type="text/javascript" src="js/dmscreen-counter.js"></script>
+<script type="text/javascript" src="js/dmscreen-mapper.js"></script>
 <script type="text/javascript" src="js/hist.js"></script>
 <script type="text/javascript" src="js/list2.js"></script>
 <script type="text/javascript" src="lib/bootstrap-tooltip.js"></script>

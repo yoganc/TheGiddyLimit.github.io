@@ -22,6 +22,20 @@
 			"dateLastModified": 1567862109
 		},
 		{
+			"id": "EGW",
+			"name": "Explorer's Guide to Wildemount",
+			"size": 14806900,
+			"version": "1.0",
+			"dateLastModified": 1585160628
+		},
+        {
+			"id": "ERLW",
+			"name": "Eberron: Rising from the Last War",
+			"size": 9404607,
+			"version": "1.0",
+			"dateLastModified": 1574367201
+		},
+		{
 			"id": "GoS",
 			"name": "Ghosts of Saltmarsh",
 			"size": 20815115,
@@ -43,6 +57,27 @@
 			"dateLastModified": 1543605262
 		},
 		{
+			"id": "IDRotF",
+			"name": "Icewind Dale: Rime of the Frostmaiden",
+			"size": 23813901,
+			"version": "1.0",
+			"dateLastModified": 1600193295
+		},
+		{
+			"id": "MOT",
+			"name": "Mythic Odysseys of Theros",
+			"size": 12978753,
+			"version": "1.0",
+			"dateLastModified": 1591307071
+		},
+		{
+			"id": "OotA",
+			"name": "Out of the Abyss",
+			"size": 20717393,
+			"version": "1.0",
+			"dateLastModified": 1589562120
+		},
+		{
 			"id": "OotW",
 			"name": "The Orrery of the Wanderer",
 			"size": 10075254,
@@ -62,6 +97,13 @@
 			"size": 1510031,
 			"version": "",
 			"dateLastModified": 1536926400
+		},
+		{
+			"id": "RMBRE",
+			"name": "Rick and Morty: Big Rick Energy",
+			"size": 2441565,
+			"version": "1.0",
+			"dateLastModified": 1575323250
 		},
 		{
 			"id": "RoT",

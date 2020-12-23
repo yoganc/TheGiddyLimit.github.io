@@ -38,7 +38,10 @@ function rollSuppStatus () {
 
 /**
  * @param [opts] Options object.
- * @param opts.isParent If this person is a parent.
+ * @param [opts.isParent] If this person is a parent.
+ * @param [opts.race] Race for this person (parent only).
+ * @param [opts.gender] Gender for this person (parent only).
+ * @param [opts.isSibling] If this person is a sibling.
  * @param opts.gender The gender of this person.
  * @param opts.parentRaces List of parent races for this person.
  * @param opts.isAdventurer Is the person is an adventurer (and therefore has a class as opposed to an occupation).
@@ -46,31 +49,7 @@ function rollSuppStatus () {
 function getPersonDetails (opts) {
 	opts = opts || {};
 
-	const status = rollSuppStatus();
-	const align = rollSuppAlignment().result;
-	const occ = rollSuppOccupation().result;
-	const cls = rollSuppClass().result;
-	const relate = rollSuppRelationship().result;
-	const out = [
-		`<b>Alignment:</b> ${align}`,
-		opts.isAdventurer ? `<b>Class:</b> ${cls}` : `<b>Occupation:</b> ${occ}`,
-		`<b>Relationship:</b> ${relate}`
-	];
-	if (!opts.isParent) {
-		out.push(`<b>Status:</b> ${status.result}`);
-	}
-
-	if (!opts.isParent) {
-		const race = opts.parentRaces ? (() => {
-			const useParent = RNG(100) > 15;
-			if (useParent) return rollOnArray(opts.parentRaces);
-			else return rollSuppRace().result;
-		})() : rollSuppRace().result;
-
-		out.unshift(`<i><b>Race:</b> ${race}</i>`);
-		const gender = opts.gender ? opts.gender : rollUnofficialGender().result;
-		out.unshift(`<i><b>Gender:</b> ${gender}</i>`);
-
+	function addName (race, gender) {
 		const raceSlug = Parser.stringToSlug(race);
 		if (nameTables[raceSlug]) {
 			const availNameTables = nameTables[raceSlug];
@@ -98,8 +77,50 @@ function getPersonDetails (opts) {
 				} else return null;
 			})();
 
-			out.unshift(`<i><b title="Generated using the random name tables found in Xanathar's Guide to Everything">Name:</b> ${resultFirst.result}${resultLast ? ` ${resultLast.result}` : ""}</i>`);
+			if (opts.isParent && !ptrParentLastName._) ptrParentLastName._ = resultLast ? resultLast.result : null;
+			const lastName = (() => {
+				if (ptrParentLastName._) {
+					if (opts.isParent) return ptrParentLastName._;
+					else if (opts.isSibling) {
+						// 20% chance of sibling not having the same last name
+						if (RNG(5) !== 5) return ptrParentLastName._;
+					}
+				}
+				return resultLast ? resultLast.result : "";
+			})();
+
+			out.unshift(`<i><b title="Generated using the random name tables found in Xanathar's Guide to Everything">Name:</b> ${resultFirst.result}${lastName ? ` ${lastName}` : ""}</i>`);
 		}
+	}
+
+	const status = rollSuppStatus();
+	const align = rollSuppAlignment().result;
+	const occ = rollSuppOccupation().result;
+	const cls = rollSuppClass().result;
+	const relate = rollSuppRelationship().result;
+	const out = [
+		`<b>Alignment:</b> ${align}`,
+		opts.isAdventurer ? `<b>Class:</b> ${cls}` : `<b>Occupation:</b> ${occ}`,
+		`<b>Relationship:</b> ${relate}`,
+	];
+	if (!opts.isParent) {
+		out.push(`<b>Status:</b> ${status.result}`);
+	}
+
+	if (!opts.isParent) {
+		const race = opts.parentRaces ? (() => {
+			const useParent = RNG(100) > 15;
+			if (useParent) return rollOnArray(opts.parentRaces);
+			else return rollSuppRace().result;
+		})() : rollSuppRace().result;
+
+		out.unshift(`<i><b>Race:</b> ${race}</i>`);
+		const gender = opts.gender ? opts.gender : rollUnofficialGender().result;
+		out.unshift(`<i><b>Gender:</b> ${gender}</i>`);
+
+		addName(race, gender);
+	} else if (opts.race) {
+		addName(opts.race, opts.gender || "Other");
 	}
 	return out;
 }
@@ -136,7 +157,7 @@ function rollUnofficialGender () {
 	const GENDERS = [
 		{min: 1, max: 49, result: "Male"},
 		{min: 50, max: 98, result: "Female"},
-		{min: 98, max: 100, result: "Other"}
+		{min: 98, max: 100, result: "Other"},
 	];
 	return GenUtil.getFromTable(GENDERS, RNG(100));
 }
@@ -159,26 +180,27 @@ function rollOnArray (lst) {
 }
 
 const RACES_SELECTABLE = ["Dwarf", "Elf", "Half-Elf", "Half-Orc", "Tiefling"];
+const RACES_UNSELECTABLE = ["Human", "Halfling", "Dragonborn", "Gnome"];
 
 const PARENTS_HALF_ELF = [
 	{min: 1, max: 5, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was an elf and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a human.` }, display: "One parent was an elf and the other was a human.", _races: ["Elf", "Human"]},
 	{min: 6, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was an elf and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a half-elf.` }, display: "One parent was an elf and the other was a half-elf.", _races: ["Elf", "Half-Elf"]},
 	{min: 7, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was a human and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a half-elf.` }, display: "One parent was a human and the other was a half-elf.", _races: ["Half-Elf", "Human"]},
-	{min: 8, result: "Both parents were half-elves.", _races: ["Half-Elf", "Half-Elf"]}
+	{min: 8, result: "Both parents were half-elves.", _races: ["Half-Elf", "Half-Elf"]},
 ];
 
 const PARENTS_HALF_ORC = [
 	{min: 1, max: 3, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was an orc and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a human.` }, display: "One parent was an orc and the other was a human.", _races: ["Orc", "Human"]},
 	{min: 4, max: 5, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was an orc and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a half-orc.` }, display: "One parent was an orc and the other was a half-orc.", _races: ["Orc", "Half-Orc"]},
 	{min: 6, max: 7, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was a human and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a half-orc.` }, display: "One parent was a human and the other was a half-orc.", _races: ["Human", "Half-Orc"]},
-	{min: 8, display: "Both parents were half-orcs.", _races: ["Half-Orc", "Half-Orc"]}
+	{min: 8, display: "Both parents were half-orcs.", _races: ["Half-Orc", "Half-Orc"]},
 ];
 
 const PARENTS_TIEFLING = [
 	{min: 1, max: 4, display: "Both parents were humans, their infernal heritage dormant until you came along.", _races: ["Human", "Human"]},
 	{min: 5, max: 6, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was a tiefling and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a human.` }, display: "One parent was a tiefling and the other was a human.", _races: ["Human", "Tiefling"]},
 	{min: 7, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was a tiefling and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a devil.` }, display: "One parent was a tiefling and the other was a devil.", _races: ["Devil", "Tiefling"]},
-	{min: 8, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was a human and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a devil.` }, display: "One parent was a human and the other was a devil.", _races: ["Human", "Devil"]}
+	{min: 8, result: () => { const p = RNG(2); return `One parent ${fmtChoice(p === 1 ? "mother" : "father")} was a human and the other ${fmtChoice(p === 1 ? "father" : "mother")} was a devil.` }, display: "One parent was a human and the other was a devil.", _races: ["Human", "Devil"]},
 ];
 
 const BIRTHPLACES = [
@@ -204,7 +226,7 @@ const BIRTHPLACES = [
 	{min: 97, result: "In the Shadowfell"},
 	{min: 98, result: () => `On the Astral Plane or the Ethereal Plane ${choose("Astral Plane", "Ethereal Plane")}`, display: "On the Astral Plane or the Ethereal Plane"},
 	{min: 99, result: "On an Inner Plane of your choice"},
-	{min: 100, result: "On an Outer Plane of your choice"}
+	{min: 100, result: "On an Outer Plane of your choice"},
 ];
 
 function absentParent (parent) {
@@ -236,14 +258,14 @@ const FAMILY = [
 	{min: 26, max: 35, result: () => `Adoptive family (same or different race) ${choose("same race", "different race")}. ${absentBothParents()}`, display: "Adoptive family (same or different race)"},
 	{min: 36, max: 55, result: () => singleParentOrStep("father"), display: "Single father or stepfather"},
 	{min: 56, max: 75, result: () => singleParentOrStep("mother"), display: "Single mother or stepmother"},
-	{min: 76, max: 100, result: "Mother and father"}
+	{min: 76, max: 100, result: "Mother and father"},
 ];
 
 const ABSENT_PARENT = [
 	{min: 1, result: () => `Your parent died (${rollSuppDeath().result.lowercaseFirst()}).`, display: "Your parent died (roll on the {@table Supplemental Tables; Cause of Death|XGE|Cause of Death} supplemental table)."},
 	{min: 2, result: () => `Your parent was imprisoned, enslaved, or otherwise taken away ${choose("imprisoned", "enslaved", "otherwise taken away")}.`, display: "Your parent was imprisoned, enslaved, or otherwise taken away."},
 	{min: 3, result: "Your parent abandoned you."},
-	{min: 4, result: "Your parent disappeared to an unknown fate."}
+	{min: 4, result: "Your parent disappeared to an unknown fate."},
 ];
 
 const FAMILY_LIFESTYLE = [
@@ -253,7 +275,7 @@ const FAMILY_LIFESTYLE = [
 	{min: 9, max: 12, result: "Modest (+0)", "modifier": 0},
 	{min: 13, max: 15, result: "Comfortable (+10)", "modifier": 10},
 	{min: 16, max: 17, result: "Wealthy (+20)", "modifier": 20},
-	{min: 18, result: "Aristocratic (+40)", "modifier": 40}
+	{min: 18, result: "Aristocratic (+40)", "modifier": 40},
 ];
 
 const CHILDHOOD_HOME = [
@@ -265,7 +287,7 @@ const CHILDHOOD_HOME = [
 	{min: 51, max: 70, result: "Small house"},
 	{min: 71, max: 90, result: "Large house"},
 	{min: 91, max: 110, result: "Mansion"},
-	{min: 111, result: () => `Palace or castle ${choose("palace", "castle")}`, display: "Palace or castle"}
+	{min: 111, result: () => `Palace or castle ${choose("palace", "castle")}`, display: "Palace or castle"},
 ];
 
 const CHILDHOOD_MEMORIES = [
@@ -275,7 +297,7 @@ const CHILDHOOD_MEMORIES = [
 	{min: 9, max: 12, result: "I had a few close friends and lived an ordinary childhood."},
 	{min: 13, max: 15, result: "I had several friends, and my childhood was generally a happy one."},
 	{min: 16, max: 17, result: "I always found it easy to make friends, and I loved being around people."},
-	{min: 18, result: "Everyone knew who I was, and I had friends everywhere I went."}
+	{min: 18, result: "Everyone knew who I was, and I had friends everywhere I went."},
 ];
 
 const LIFE_EVENTS_AGE = [
@@ -284,12 +306,12 @@ const LIFE_EVENTS_AGE = [
 	{min: 60, max: 69, "age": () => RNG(10) + 30, result: "31\u201440 years", "events": () => RNG(6)},
 	{min: 70, max: 89, "age": () => RNG(10) + 40, result: "41\u201450 years", "events": () => RNG(8)},
 	{min: 90, max: 99, "age": () => RNG(10) + 50, result: "51\u201460 years", "events": () => RNG(10)},
-	{min: 100, "age": () => RNG(690) + 60, result: "61 years or older", "events": () => RNG(12)} // max age = 750; max elven age
+	{min: 100, "age": () => RNG(690) + 60, result: "61 years or older", "events": () => RNG(12)}, // max age = 750; max elven age
 ];
 
 function _lifeEvtResult (title, rollResult) {
 	const out = {
-		result: `${title}: ${rollResult.result}`
+		result: `${title}: ${rollResult.result}`,
 	};
 	if (rollResult.nextRoll) out.nextRoll = rollResult.nextRoll;
 	return out;
@@ -298,7 +320,7 @@ function _lifeEvtResult (title, rollResult) {
 function _lifeEvtResultArr (title, titles, ...rollResults) {
 	return {
 		title: title,
-		result: titles.map((it, i) => `${it}: ${rollResults[i].result}`)
+		result: titles.map((it, i) => `${it}: ${rollResults[i].result}`),
 	}
 }
 
@@ -306,7 +328,7 @@ let marriageIndex = 0;
 function _lifeEvtPerson (title, personDetails) {
 	return {
 		title: title,
-		result: personDetails
+		result: personDetails,
 	}
 }
 
@@ -314,7 +336,7 @@ const LIFE_EVENTS = [
 	{min: 1, max: 10, result: "You suffered a tragedy. Roll on the Tragedies table.", nextRoll: () => _lifeEvtResult("Tragedy", rollEvtTragedy())},
 	{min: 11, max: 20, result: "You gained a bit of good fortune. Roll on the Boons table.", nextRoll: () => _lifeEvtResult("Boon", rollEvtBoon())},
 	{min: 21, max: 30, result: "You fell in love or got married. If you get this result more than once, you can choose to have a child instead. Work with your DM to determine the identity of your love interest.", nextRoll: () => _lifeEvtPerson(marriageIndex++ === 0 ? "Spouse" : "Spouse/Child", getPersonDetails())},
-	{min: 31, max: 40, result: () => `You made an enemy of an adventurer. Roll a {@dice d6} ${fmtChoice(RNG(6))}. An odd number indicates you are to blame for the rift, and an even number indicates you are blameless. Use the supplemental tables and work with your DM to determine this hostile character's identity and the danger this enemy poses to you.`, display: "You made an enemy of an adventurer. Roll a {@dice d6}. An odd number indicates you are to blame for the rift, and an even number indicates you are blameless. Use the supplemental tables and work with your DM to determine this hostile character's identity and the danger this enemy poses to you.", nextRoll: () => _lifeEvtPerson("Enemy", getPersonDetails())},
+	{min: 31, max: 40, result: () => `You made an enemy of an adventurer. Roll a {@dice d6} ${fmtChoice(RNG(6))}. An odd number indicates you are to blame for the rift, and an even number indicates you are blameless. Use the supplemental tables and work with your DM to determine this hostile character's identity and the danger this enemy poses to you.`, display: "You made an enemy of an adventurer. Roll a {@dice d6}. An odd number indicates you are to blame for the rift, and an even number indicates you are blameless. Use the supplemental tables and work with your DM to determine this hostile character's identity and the danger this enemy poses to you.", nextRoll: () => _lifeEvtPerson("Enemy", getPersonDetails({isAdventurer: true}))},
 	{min: 41, max: 50, result: "You made a friend of an adventurer. Use the supplemental tables and work with your DM to add more detail to this friendly character and establish how your friendship began.", nextRoll: () => _lifeEvtPerson("Friend", getPersonDetails({isAdventurer: true}))},
 	{min: 51, max: 70, result: () => `You spent time working in a job related to your background. Start the game with an extra {@dice 2d6} ${fmtChoice(RNG(6) + RNG(6))} gp.`, display: "You spent time working in a job related to your background. Start the game with an extra {@dice 2d6} gp."},
 	{min: 71, max: 75, result: "You met someone important. Use the supplemental tables to determine this character's identity and how this individual feels about you. Work out additional details with your DM as needed to fit this character into your backstory.", nextRoll: () => _lifeEvtPerson("Meeting", getPersonDetails())},
@@ -323,7 +345,7 @@ const LIFE_EVENTS = [
 	{min: 86, max: 90, result: "You fought in a battle. Roll on the War table to learn what happened to you. Work with your DM to come up with the reason for the battle and the factions involved. It might have been a small conflict between your community and a band of orcs, or it could have been a major battle in a larger war.", nextRoll: () => _lifeEvtResult("War", rollEvtWar())},
 	{min: 91, max: 95, result: "You committed a crime or were wrongly accused of doing so. Roll on the Crime table to determine the nature of the offense and on the Punishment table to see what became of you.", nextRoll: () => _lifeEvtResultArr("Crime and Punishment", ["Crime", "Punishment"], rollEvtCrime(), rollEvtPunishment())},
 	{min: 96, max: 99, result: "You encountered something magical. Roll on the Arcane Matters table.", nextRoll: () => _lifeEvtResult("Arcane Matter", rollEvtArcaneMatter())},
-	{min: 100, result: "Something truly strange happened to you. Roll on the Weird Stuff table.", nextRoll: () => _lifeEvtResult("Weird Stuff", rollEvtWeird())}
+	{min: 100, result: "Something truly strange happened to you. Roll on the Weird Stuff table.", nextRoll: () => _lifeEvtResult("Weird Stuff", rollEvtWeird())},
 ];
 
 const LIFE_EVENTS_ADVENTURES = [
@@ -337,7 +359,7 @@ const LIFE_EVENTS_ADVENTURES = [
 	{min: 71, max: 80, result: "You learned a great deal during your adventure. The next time you make an ability check or a saving throw, you have advantage on the roll."},
 	{min: 81, max: 90, result: () => `You found some treasure on your adventure. You have {@dice 2d6} ${fmtChoice(RNG(6) + RNG(6))} gp left from your share of it.`, display: "You found some treasure on your adventure. You have {@dice 2d6} gp left from your share of it."},
 	{min: 91, max: 99, result: () => `You found a considerable amount of treasure on your adventure. You have {@dice 1d20 + 50} ${fmtChoice(RNG(20) + 50)} gp left from your share of it.`, display: "You found a considerable amount of treasure on your adventure. You have {@dice 1d20 + 50} gp left from your share of it."},
-	{min: 100, result: "You came across a common magic item (of the DM's choice)."}
+	{min: 100, result: "You came across a common magic item (of the DM's choice)."},
 ];
 
 const LIFE_EVENTS_ARCANE_MATTERS = [
@@ -350,20 +372,20 @@ const LIFE_EVENTS_ARCANE_MATTERS = [
 	{min: 7, result: "You turned invisible for a time."},
 	{min: 8, result: "You identified an illusion for what it was."},
 	{min: 9, result: "You saw a creature being conjured by magic."},
-	{min: 10, result: () => `Your fortune was read by a diviner. Roll twice on the Life Events table, but don't apply the results. Instead, the DM picks one event as a portent of your future (which might or might not come true). ${fmtChoice(GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).display || GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).result)} ${fmtChoice(GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).display || GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).result)}`, display: "Your fortune was read by a diviner. Roll twice on the Life Events table, but don't apply the results. Instead, the DM picks one event as a portent of your future (which might or might not come true)."}
+	{min: 10, result: () => `Your fortune was read by a diviner. Roll twice on the Life Events table, but don't apply the results. Instead, the DM picks one event as a portent of your future (which might or might not come true). ${fmtChoice(GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).display || GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).result)} ${fmtChoice(GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).display || GenUtil.getFromTable(LIFE_EVENTS, RNG(100)).result)}`, display: "Your fortune was read by a diviner. Roll twice on the Life Events table, but don't apply the results. Instead, the DM picks one event as a portent of your future (which might or might not come true)."},
 ];
 
 const LIFE_EVENTS_BOONS = [
 	{min: 1, result: "A friendly wizard gave you a spell scroll containing one cantrip (of the DM's choice)."},
 	{min: 2, result: "You saved the life of a commoner, who now owes you a life debt. This individual accompanies you on your travels and performs mundane tasks for you, but will leave if neglected, abused, or imperiled. Determine details about this character by using the supplemental tables and working with your DM."},
-	{min: 3, result: "You found a riding horse."},
+	{min: 3, result: "You found a {@item riding horse}."},
 	{min: 4, result: () => `You found some money. You have {@dice 1d20} ${fmtChoice(RNG(20))} gp in addition to your regular starting funds.`, display: "You found some money. You have {@dice 1d20} gp in addition to your regular starting funds."},
 	{min: 5, result: "A relative bequeathed you a simple weapon of your choice."},
 	{min: 6, result: () => `You found something interesting. You gain one additional trinket ${fmtChoice(rollTrinket())}.`, display: "You found something interesting. You gain one additional trinket."},
 	{min: 7, result: "You once performed a service for a local temple. The next time you visit the temple, you can receive healing up to your hit point maximum."},
 	{min: 8, result: "A friendly alchemist gifted you with a potion of healing or a flask of acid, as you choose."},
 	{min: 9, result: "You found a treasure map."},
-	{min: 10, result: () => `A distant relative left you a stipend that enables you to live at the comfortable lifestyle for {@dice 1d20} ${fmtChoice(RNG(20))} years. If you choose to live at a higher lifestyle, you reduce the price of the lifestyle by 2 gp during that time period.`, display: "A distant relative left you a stipend that enables you to live at the comfortable lifestyle for {@dice 1d20} years. If you choose to live at a higher lifestyle, you reduce the price of the lifestyle by 2 gp during that time period."}
+	{min: 10, result: () => `A distant relative left you a stipend that enables you to live at the comfortable lifestyle for {@dice 1d20} ${fmtChoice(RNG(20))} years. If you choose to live at a higher lifestyle, you reduce the price of the lifestyle by 2 gp during that time period.`, display: "A distant relative left you a stipend that enables you to live at the comfortable lifestyle for {@dice 1d20} years. If you choose to live at a higher lifestyle, you reduce the price of the lifestyle by 2 gp during that time period."},
 ];
 
 const LIFE_EVENTS_CRIME = [
@@ -374,14 +396,14 @@ const LIFE_EVENTS_CRIME = [
 	{min: 5, result: "Smuggling"},
 	{min: 6, result: "Kidnapping"},
 	{min: 7, result: "Extortion"},
-	{min: 8, result: "Counterfeiting"}
+	{min: 8, result: "Counterfeiting"},
 ];
 
 const LIFE_EVENTS_PUNISHMENT = [
 	{min: 1, max: 3, result: "You did not commit the crime and were exonerated after being accused."},
 	{min: 4, max: 6, result: "You committed the crime or helped do so, but nonetheless the authorities found you not guilty."},
 	{min: 7, max: 8, result: "You were nearly caught in the act. You had to flee and are wanted in the community where the crime occurred."},
-	{min: 9, max: 12, result: () => `You were caught and convicted. You spent time in jail, chained to an oar, or performing hard labor. You served a sentence of {@dice 1d4} years ${fmtChoice(RNG(4))} or succeeded in escaping after that much time.`, display: "You were caught and convicted. You spent time in jail, chained to an oar, or performing hard labor. You served a sentence of {@dice 1d4} years or succeeded in escaping after that much time."}
+	{min: 9, max: 12, result: () => `You were caught and convicted. You spent time in jail, chained to an oar, or performing hard labor. You served a sentence of {@dice 1d4} years ${fmtChoice(RNG(4))} or succeeded in escaping after that much time.`, display: "You were caught and convicted. You spent time in jail, chained to an oar, or performing hard labor. You served a sentence of {@dice 1d4} years or succeeded in escaping after that much time."},
 ];
 
 const LIFE_EVENTS_SUPERNATURAL = [
@@ -399,7 +421,7 @@ const LIFE_EVENTS_SUPERNATURAL = [
 	{min: 81, max: 85, result: "You saw a ghoul feeding on a corpse."},
 	{min: 86, max: 90, result: "A celestial or a fiend visited you in your dreams to give a warning of dangers to come."},
 	{min: 91, max: 95, result: () => `You briefly visited the Feywild or the Shadowfell ${choose("Feywild", "Shadowfell")}.`, "results": "You briefly visited the Feywild or the Shadowfell."},
-	{min: 96, max: 100, result: "You saw a portal that you believe leads to another plane of existence."}
+	{min: 96, max: 100, result: "You saw a portal that you believe leads to another plane of existence."},
 ];
 
 const LIFE_EVENTS_TRAGEDIES = [
@@ -413,7 +435,7 @@ const LIFE_EVENTS_TRAGEDIES = [
 	{min: 9, result: "You did something that brought terrible shame to you in the eyes of your family. You might have been involved in a scandal, dabbled in dark magic, or offended someone important. The attitude of your family members toward you becomes indifferent at best, though they might eventually forgive you."},
 	{min: 10, result: "For a reason you were never told, you were exiled from your community. You then either wandered in the wilderness for a time or promptly found a new place to live."},
 	{min: 11, result: () => `A romantic relationship ended. Roll a {@dice d6} ${fmtChoice(RNG(6))}. An odd number means it ended with bad feelings, while an even number means it ended amicably.`, display: "A romantic relationship ended. Roll a {@dice d6}. An odd number means it ended with bad feelings, while an even number means it ended amicably."},
-	{min: 12, result: () => `A current or prospective romantic partner of yours died. Roll on the {@table Supplemental Tables; Cause of Death|XGE|Cause of Death} supplemental table to find out how. If the result is murder, roll a {@dice d12}. On a 1, you were responsible, whether directly or indirectly.`, display: "A current or prospective romantic partner of yours died. Roll on the {@table Supplemental Tables; Cause of Death|XGE|Cause of Death} supplemental table to find out how. If the result is murder, roll a {@dice d12}. On a 1, you were responsible, whether directly or indirectly.", nextRoll: () => _lifeEvtResult("Cause of Death", (() => { const r = RNG(12); const p = GenUtil.getFromTable(SUPP_DEATH, r); return {result: `${p.result}${r === 2 && RNG(12) === 1 ? ` ${fmtChoice("you were responsible")}` : ""}`} })())}
+	{min: 12, result: () => `A current or prospective romantic partner of yours died. Roll on the {@table Supplemental Tables; Cause of Death|XGE|Cause of Death} supplemental table to find out how. If the result is murder, roll a {@dice d12}. On a 1, you were responsible, whether directly or indirectly.`, display: "A current or prospective romantic partner of yours died. Roll on the {@table Supplemental Tables; Cause of Death|XGE|Cause of Death} supplemental table to find out how. If the result is murder, roll a {@dice d12}. On a 1, you were responsible, whether directly or indirectly.", nextRoll: () => _lifeEvtResult("Cause of Death", (() => { const r = RNG(12); const p = GenUtil.getFromTable(SUPP_DEATH, r); return {result: `${p.result}${r === 2 && RNG(12) === 1 ? ` ${fmtChoice("you were responsible")}` : ""}`} })())},
 ];
 
 const LIFE_EVENTS_WAR = [
@@ -423,7 +445,7 @@ const LIFE_EVENTS_WAR = [
 	{min: 5, max: 7, result: "You suffered only minor injuries, and the wounds all healed without leaving scars."},
 	{min: 8, max: 9, result: "You survived the battle, but you suffer from terrible nightmares in which you relive the experience."},
 	{min: 10, max: 11, result: "You escaped the battle unscathed, though many of your friends were injured or lost."},
-	{min: 12, result: "You acquitted yourself well in battle and are remembered as a hero. You might have received a medal for your bravery."}
+	{min: 12, result: "You acquitted yourself well in battle and are remembered as a hero. You might have received a medal for your bravery."},
 ];
 
 const LIFE_EVENTS_WEIRD_STUFF = [
@@ -432,13 +454,13 @@ const LIFE_EVENTS_WEIRD_STUFF = [
 	{min: 3, result: () => `You were enslaved by a hag, a satyr, or some other being and lived in that creature's thrall for {@dice 1d6} ${fmtChoice(RNG(6))} years.`, display: "You were enslaved by a hag, a satyr, or some other being and lived in that creature’s thrall for {@dice 1d6} years."},
 	{min: 4, result: () => `A dragon held you as a prisoner for {@dice 1d4} ${fmtChoice(RNG(4))} months until adventurers killed it.`, display: "A dragon held you as a prisoner for {@dice 1d4} months until adventurers killed it."},
 	{min: 5, result: "You were taken captive by a race of evil humanoids such as drow, kuo-toa, or quaggoths. You lived as a slave in the Underdark until you escaped."},
-	{min: 6, result: "You served a powerful adventurer as a hireling. You have only recently left that service. Use the supplemental tables and work with your DM to determine the basic details about your former employer."},
+	{min: 6, result: "You served a powerful adventurer as a hireling. You have only recently left that service. Use the supplemental tables and work with your DM to determine the basic details about your former employer.", nextRoll: () => _lifeEvtPerson("Employer", getPersonDetails({isAdventurer: true}))},
 	{min: 7, result: () => `You went insane for {@dice 1d6} ${fmtChoice(RNG(6))} years and recently regained your sanity. A tic or some other bit of odd behavior might linger.`, display: "You went insane for {@dice 1d6} years and recently regained your sanity. A tic or some other bit of odd behavior might linger."},
 	{min: 8, result: "A lover of yours was secretly a silver dragon."},
 	{min: 9, result: "You were captured by a cult and nearly sacrificed on an altar to the foul being the cultists served. You escaped, but you fear they will find you."},
 	{min: 10, result: () => `You met a demigod, an archdevil, an archfey, a demon lord, or a titan, ${choose("demigod", "archdevil", "archfey", "demon lord", "titan")} and you lived to tell the tale.`, display: "You met a demigod, an archdevil, an archfey, a demon lord, or a titan, and you lived to tell the tale."},
 	{min: 11, result: "You were swallowed by a giant fish and spent a month in its gullet before you escaped."},
-	{min: 12, result: () => `A powerful being granted you a wish, but you squandered it on something frivolous.`, display: "A powerful being granted you a wish, but you squandered it on something frivolous."}
+	{min: 12, result: () => `A powerful being granted you a wish, but you squandered it on something frivolous.`, display: "A powerful being granted you a wish, but you squandered it on something frivolous."},
 ];
 
 const SUPP_ALIGNMENT = [
@@ -448,7 +470,7 @@ const SUPP_ALIGNMENT = [
 	{min: 9, max: 12, result: "Neutral"},
 	{min: 13, max: 15, result: "Neutral good"},
 	{min: 16, max: 17, result: () => rollOnArray(["Lawful good", "Lawful neutral"]), display: "Lawful good (50%) or lawful neutral (50%)"},
-	{min: 18, result: () => rollOnArray(["Chaotic good", "Chaotic neutral"]), display: "Chaotic good (50%) or chaotic neutral (50%)"}
+	{min: 18, result: () => rollOnArray(["Chaotic good", "Chaotic neutral"]), display: "Chaotic good (50%) or chaotic neutral (50%)"},
 ];
 
 const SUPP_DEATH = [
@@ -462,7 +484,7 @@ const SUPP_DEATH = [
 	{min: 9, result: () => `Torn apart by an animal or a natural disaster ${choose("animal", "natural disaster")}`, display: "Torn apart by an animal or a natural disaster"},
 	{min: 10, result: () => "Consumed by a monster"},
 	{min: 11, result: () => `Executed for a crime or tortured to death ${choose("executed for a crime", "tortured to death")}`, display: "Executed for a crime or tortured to death"},
-	{min: 12, result: "Bizarre event, such as being hit by a meteorite, struck down by an angry god, or killed by a hatching slaad egg"}
+	{min: 12, result: "Bizarre event, such as being hit by a meteorite, struck down by an angry god, or killed by a hatching slaad egg"},
 ];
 
 const SUPP_CLASS = [
@@ -477,7 +499,7 @@ const SUPP_CLASS = [
 	{min: 71, max: 84, result: "Rogue"},
 	{min: 85, max: 89, result: "Sorcerer"},
 	{min: 90, max: 94, result: "Warlock"},
-	{min: 95, max: 100, result: "Wizard"}
+	{min: 95, max: 100, result: "Wizard"},
 ];
 
 const SUPP_OCCUPATION = [
@@ -496,7 +518,7 @@ const SUPP_OCCUPATION = [
 	{min: 81, max: 85, result: () => `Politician or bureaucrat ${choose("politician", "bureaucrat")}`, display: "Politician or bureaucrat"},
 	{min: 86, max: 90, result: "Priest"},
 	{min: 91, max: 95, result: "Sailor"},
-	{min: 96, max: 100, result: "Soldier"}
+	{min: 96, max: 100, result: "Soldier"},
 ];
 
 const SUPP_RACE = [
@@ -509,13 +531,13 @@ const SUPP_RACE = [
 	{min: 81, max: 85, result: "Half-elf"},
 	{min: 86, max: 90, result: "Half-orc"},
 	{min: 91, max: 95, result: "Tiefling"},
-	{min: 96, max: 100, result: "DM’s choice"}
+	{min: 96, max: 100, result: "DM’s choice"},
 ];
 
 const SUPP_RELATIONSHIP = [
 	{min: 3, max: 4, result: "Hostile"},
 	{min: 5, max: 10, result: "Friendly"},
-	{min: 11, max: 12, result: "Indifferent"}
+	{min: 11, max: 12, result: "Indifferent"},
 ];
 
 const SUPP_STATUS = [
@@ -525,7 +547,7 @@ const SUPP_STATUS = [
 	{min: 9, max: 12, result: "Alive and well"},
 	{min: 13, max: 15, result: "Alive and quite successful"},
 	{min: 16, max: 17, result: "Alive and infamous"},
-	{min: 18, result: "Alive and famous"}
+	{min: 18, result: "Alive and famous"},
 ];
 
 let classList;
@@ -556,6 +578,7 @@ function onJsonLoad (lifeData, nameData) {
 	$selRace.append(`<option value="Random" selected>Random</option>`);
 	$selRace.append(`<option value="Other">Other</option>`);
 	RACES_SELECTABLE.forEach(r => $selRace.append(`<option value="${r}">${r}</option>`));
+	RACES_UNSELECTABLE.forEach(r => $selRace.append(`<option class="italic" value="${r}">${r}</option>`));
 	$selCha.append(`<option value="Random">Random</option>`);
 	for (let i = -5; i <= 5; ++i) {
 		$selCha.append(`<option value="${i}" ${i === 0 ? "selected" : ""}>${i >= 0 ? "+" : ""}${i}</option>`)
@@ -572,7 +595,7 @@ function onJsonLoad (lifeData, nameData) {
 		{val: "60", text: "31&mdash;40 years", class: "italic"},
 		{val: "70", text: "41&mdash;50 years", class: "italic"},
 		{val: "90", text: "51&mdash;60 years", class: "italic"},
-		{val: "100", text: "61 years or older", class: "italic"}
+		{val: "100", text: "61 years or older", class: "italic"},
 	].forEach(age => $selAge.append(`<option value="${age.val}" ${age.style ? `style="${age.style}"` : ""} ${age.class ? `class="${age.class}"` : ""}>${age.text}</option>`));
 
 	nameTables = {};
@@ -582,8 +605,14 @@ function onJsonLoad (lifeData, nameData) {
 
 			if (nameMeta.name === "Elf" || nameMeta.name === "Human") {
 				const cpy = MiscUtil.copy(nameMeta);
-				if (nameTables["half-elf"]) nameTables["half-elf"].tables.push(...cpy.tables);
-				else nameTables["half-elf"] = cpy;
+				if (nameTables["halfelf"]) nameTables["halfelf"].tables.push(...cpy.tables);
+				else nameTables["halfelf"] = cpy;
+			} else if (nameMeta.name === "Half-Orc") {
+				nameTables["orc"] = MiscUtil.copy(nameMeta);
+			} else if (nameMeta.name === "Tiefling") {
+				const cpy = MiscUtil.copy(nameMeta);
+				cpy.tables = cpy.tables.filter(it => it.option !== "Virtue");
+				nameTables["devil"] = MiscUtil.copy(nameMeta);
 			}
 		});
 }
@@ -603,7 +632,8 @@ function concatSentences (...lst) {
 }
 
 function joinParaList (lst) {
-	return lst.join(`<br>`);
+	if (lst.join) return lst.join(`<br>`);
+	return lst;
 }
 
 const _VOWELS = ["a", "e", "i", "o", "u"];
@@ -617,6 +647,7 @@ function addN (name) {
 let knowParents;
 let race;
 let parentRaces;
+let ptrParentLastName = {}; // store the last name so we can use it for both parents, maybe
 // PARENTS
 function sectParents () {
 	knowParents = RNG(100) > 5;
@@ -669,8 +700,18 @@ function sectParents () {
 	}
 
 	if (knowParents) {
-		const mum = getPersonDetails({isParent: true});
-		const dad = getPersonDetails({isParent: true});
+		parentRaces.shuffle();
+		const mum = getPersonDetails({
+			isParent: true,
+			race: parentRaces[0],
+			gender: "Female",
+		});
+		if (RNG(2) === 1) delete ptrParentLastName._; // 50% chance not to share a last name
+		const dad = getPersonDetails({
+			isParent: true,
+			race: parentRaces.length > 1 ? parentRaces[1] : parentRaces[0],
+			gender: "Male",
+		});
 		$parents.append(`<h5>Mother</h5>`);
 		$parents.append(joinParaList(mum));
 		$parents.append(`<h5>Father</h5>`);
@@ -730,7 +771,8 @@ function sectSiblings () {
 			$siblings.append(`<h5>${getBirthOrder()} sibling ${fmtChoice(siblingType, true)}</h5>`);
 			$siblings.append(joinParaList(getPersonDetails({
 				gender: siblingType === "brother" ? "Male" : "Female",
-				parentRaces: parentRaces
+				parentRaces: parentRaces,
+				isSibling: true,
 			})));
 		}
 	} else {
@@ -752,8 +794,8 @@ function sectFamily () {
 	let famIndex = 1;
 	const $btnSuppFam = $(`<button class="btn btn-xs btn-default btn-supp-fam no-print"></button>`).on("click", () => {
 		const supDetails = getPersonDetails();
-		const $wrpRes = $(`<div class="output-wrp-border"/>`);
-		$wrpRes.append(`<h5>Family Member Roll ${famIndex++}</h5>`);
+		const $wrpRes = $(`<div class="life__output-wrp-border p-3 my-2"/>`);
+		$wrpRes.append(`<h5 class="mt-0">Family Member Roll ${famIndex++}</h5>`);
 		$wrpRes.append(joinParaList(supDetails));
 		$btnSuppFam.css("margin-bottom", 5);
 		$btnSuppFam.after($wrpRes);
@@ -801,14 +843,21 @@ function sectLifeEvents () {
 		$events.append(`${evt.result}<br>`);
 		if (evt.nextRoll) {
 			if (evt.nextRoll.title) {
-				const $wrp = $(`<div class="output-wrp-border"/>`);
-				$wrp.append(`<h5>${evt.nextRoll.title}</h5>`);
-				$wrp.append(joinParaList(evt.nextRoll.result));
-				$events.append($wrp);
+				$(`<div class="life__output-wrp-border p-3 my-2">
+					<h5 class="mt-0">${evt.nextRoll.title}</h5>
+					${joinParaList(evt.nextRoll.result)}
+				</div>`).appendTo($events);
 			} else {
-				$events.append(`${evt.nextRoll.result}<br>`);
+				$events.append(`${joinParaList(evt.nextRoll.result)}<br>`);
 				if (evt.nextRoll.nextRoll) {
-					$events.append(`${evt.nextRoll.nextRoll.result}<br>`);
+					if (evt.nextRoll.nextRoll.title) {
+						$(`<div class="life__output-wrp-border p-3 my-2">
+							<h5 class="mt-0">${evt.nextRoll.nextRoll.title}</h5>
+							${joinParaList(evt.nextRoll.nextRoll.result)}
+						</div>`).appendTo($events);
+					} else {
+						$events.append(`${joinParaList(evt.nextRoll.nextRoll.result)}<br>`);
+					}
 				}
 			}
 		}
@@ -816,7 +865,7 @@ function sectLifeEvents () {
 }
 
 function roll () {
-	$(`.output`).show();
+	$(`.life__output`).show();
 
 	sectParents();
 	sectBirthplace();
@@ -831,7 +880,7 @@ window.addEventListener("load", async () => {
 	ExcludeUtil.pInitialise(); // don't await, as this is only used for search
 	const [lifeData, nameData] = await Promise.all([
 		DataUtil.loadJSON("data/life.json"),
-		DataUtil.loadJSON("data/names.json")
+		DataUtil.loadJSON("data/names.json"),
 	]);
 	onJsonLoad(lifeData, nameData);
 
@@ -844,4 +893,6 @@ window.addEventListener("load", async () => {
 	});
 
 	$(`#xge_link`).replaceWith(Renderer.get().render(`{@book Xanathar's Guide to Everything|XGE|1|This Is Your Life}`));
+
+	window.dispatchEvent(new Event("toolsLoaded"));
 });

@@ -3,6 +3,7 @@
 		{
 			"name": "Beast of the Air",
 			"source": "UAClassFeatureVariants",
+			"page": 8,
 			"size": "S",
 			"type": "beast",
 			"alignment": [
@@ -64,7 +65,7 @@
 				{
 					"name": "Shred",
 					"entries": [
-						"{@atk mw} {@hit 5} to hit, reach 5 ft., one target. {@h}{@dice 1d6 + 3} slashing damage."
+						"{@atk mw} {@hit 5} to hit, reach 5 ft., one target. {@h}{@damage 1d6 + 3} slashing damage."
 					]
 				}
 			],
@@ -81,6 +82,7 @@
 		{
 			"name": "Beast of the Earth",
 			"source": "UAClassFeatureVariants",
+			"page": 9,
 			"size": "M",
 			"type": "beast",
 			"alignment": [
@@ -149,7 +151,7 @@
 				{
 					"name": "Maul",
 					"entries": [
-						"{@atk mw} {@hit 4} to hit, reach 5 ft., one target. {@h}{@dice 1d6 + 2} slashing damage."
+						"{@atk mw} {@hit 4} to hit, reach 5 ft., one target. {@h}{@damage 1d6 + 2} slashing damage."
 					]
 				}
 			],
@@ -161,6 +163,9 @@
 			],
 			"miscTags": [
 				"MW"
+			],
+			"conditionInflict": [
+				"prone"
 			]
 		}
 	]
